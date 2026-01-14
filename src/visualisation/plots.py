@@ -485,6 +485,350 @@ def create_comparison_report(
     print(f"\nAll plots saved to {output_dir}")
 
 
+def create_metrics_table(
+    results_df: pd.DataFrame,
+    metric: str = "dir_acc",
+    split: str = "test",
+    save_path: Optional[str] = None
+) -> pd.DataFrame:
+    """
+    Create a formatted metrics table for cross-model comparison.
+    
+    Args:
+        results_df: DataFrame from load_results()
+        metric: Metric to compare ("rmse", "mae", "dir_acc")
+        split: "train" or "test"
+        save_path: Path to save table (None = return only)
+    
+    Returns:
+        Formatted DataFrame with mean ± std across folds
+    """
+    metric_col = f"{split}_{metric}"
+    
+    if metric_col not in results_df.columns:
+        raise ValueError(f"Metric {metric_col} not found")
+    
+    # Aggregate across folds: mean ± std
+    agg_df = results_df.groupby(["model", "horizon"])[metric_col].agg(["mean", "std"]).reset_index()
+    
+    # Format as "mean ± std"
+    agg_df["formatted"] = agg_df.apply(
+        lambda row: f"{row['mean']:.4f} ± {row['std']:.4f}" if not pd.isna(row['std']) else f"{row['mean']:.4f}",
+        axis=1
+    )
+    
+    # Pivot table: models vs horizons
+    table = agg_df.pivot(index="model", columns="horizon", values="formatted")
+    
+    # Reorder to put Ridge first
+    if "RidgeRegressor" in table.index:
+        new_order = ["RidgeRegressor"] + [m for m in table.index if m != "RidgeRegressor"]
+        table = table.reindex(new_order)
+    
+    if save_path:
+        table.to_csv(save_path)
+        print(f"Saved metrics table to {save_path}")
+    
+    return table
+
+
+def plot_cumulative_pnl(
+    results_dir: str = "data/experiments",
+    fold: int = 0,
+    horizon: str = "target_h1",
+    models: Optional[List[str]] = None,
+    cost_per_trade: float = 0.0001,
+    save_path: Optional[str] = None,
+    figsize: Tuple[int, int] = (14, 8)
+):
+    """
+    Plot cumulative PnL charts for theoretical financial performance.
+    
+    Args:
+        results_dir: Directory containing experiment results
+        fold: Fold number
+        horizon: Target horizon
+        models: List of model names (None = all)
+        cost_per_trade: Transaction cost per trade (default: 1 bp = 0.0001)
+        save_path: Path to save figure (None = show)
+        figsize: Figure size
+    """
+    if models is None:
+        models = [d for d in os.listdir(results_dir) 
+                 if os.path.isdir(os.path.join(results_dir, d))]
+    
+    # Ensure Ridge is first
+    if "RidgeRegressor" in models:
+        models = ["RidgeRegressor"] + [m for m in models if m != "RidgeRegressor"]
+    
+    fig, axes = plt.subplots(2, 1, figsize=figsize, sharex=True)
+    ax1, ax2 = axes
+    
+    colors = plt.cm.tab10(np.linspace(0, 1, len(models)))
+    
+    pnl_stats = []
+    
+    for model_name, color in zip(models, colors):
+        pred_path = os.path.join(results_dir, model_name, f"fold_{fold}", f"{horizon}_predictions.csv")
+        
+        if not os.path.exists(pred_path):
+            continue
+        
+        pred_df = pd.read_csv(pred_path, index_col=0, parse_dates=True)
+        
+        # Get true returns and predictions
+        y_true = pred_df["y_true"].values
+        y_pred = pred_df["y_pred"].values
+        
+        # Handle delta targets - check if we need to reconstruct
+        if "y_true_delta" in pred_df.columns:
+            y_true = pred_df["y_true_delta"].values
+        
+        # Simple sign-based strategy: long if prediction > 0, short if < 0
+        position = np.sign(y_pred)
+        position_change = np.abs(np.diff(position, prepend=0))
+        
+        # PnL = position * return - cost * trades
+        pnl = position * y_true - cost_per_trade * position_change
+        cum_pnl = np.cumsum(pnl)
+        
+        # Calculate statistics
+        ann_factor = np.sqrt(252.0)  # Annualization factor
+        sharpe = (pnl.mean() / (pnl.std() + 1e-12)) * ann_factor
+        hit_ratio = float(np.mean((position * y_true) > 0))
+        total_pnl = cum_pnl[-1]
+        turnover = position_change.mean()
+        
+        pnl_stats.append({
+            "model": model_name.replace("Regressor", ""),
+            "total_pnl": total_pnl,
+            "sharpe": sharpe,
+            "hit_ratio": hit_ratio,
+            "turnover": turnover,
+        })
+        
+        # Plot cumulative PnL
+        label = f"{model_name.replace('Regressor', '')} (Sharpe: {sharpe:.2f})"
+        ax1.plot(pred_df.index, cum_pnl, label=label, color=color, linewidth=2, alpha=0.8)
+        
+        # Plot daily PnL distribution
+        ax2.hist(pnl, bins=50, alpha=0.3, label=model_name.replace("Regressor", ""), 
+                color=color, density=True)
+    
+    ax1.set_title(f"Cumulative PnL (Fold {fold}, {horizon}, Cost={cost_per_trade*1e4:.1f} bps/trade)", 
+                 fontsize=14, fontweight="bold")
+    ax1.set_ylabel("Cumulative PnL", fontsize=12)
+    ax1.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    ax1.grid(alpha=0.3)
+    ax1.axhline(y=0, color="k", linestyle="--", linewidth=1, alpha=0.5)
+    
+    ax2.set_title("Daily PnL Distribution", fontsize=12, fontweight="bold")
+    ax2.set_xlabel("Daily PnL", fontsize=12)
+    ax2.set_ylabel("Density", fontsize=12)
+    ax2.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    ax2.grid(alpha=0.3)
+    ax2.axvline(x=0, color="k", linestyle="--", linewidth=1, alpha=0.5)
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        print(f"Saved PnL plot to {save_path}")
+        
+        # Save PnL statistics
+        stats_df = pd.DataFrame(pnl_stats)
+        stats_path = save_path.replace(".png", "_stats.csv")
+        stats_df.to_csv(stats_path, index=False)
+        print(f"Saved PnL statistics to {stats_path}")
+    else:
+        plt.show()
+    
+    plt.close()
+    
+    return pd.DataFrame(pnl_stats)
+
+
+def plot_residuals(
+    results_dir: str = "data/experiments",
+    fold: int = 0,
+    horizon: str = "target_h1",
+    models: Optional[List[str]] = None,
+    save_path: Optional[str] = None,
+    figsize: Tuple[int, int] = (16, 10)
+):
+    """
+    Plot residual analysis to check for systematic errors.
+    
+    Args:
+        results_dir: Directory containing experiment results
+        fold: Fold number
+        horizon: Target horizon
+        models: List of model names (None = all)
+        save_path: Path to save figure (None = show)
+        figsize: Figure size
+    """
+    if models is None:
+        models = [d for d in os.listdir(results_dir) 
+                 if os.path.isdir(os.path.join(results_dir, d))]
+    
+    # Ensure Ridge is first
+    if "RidgeRegressor" in models:
+        models = ["RidgeRegressor"] + [m for m in models if m != "RidgeRegressor"]
+    
+    n_models = len(models)
+    fig, axes = plt.subplots(n_models, 3, figsize=figsize)
+    
+    if n_models == 1:
+        axes = axes.reshape(1, -1)
+    
+    for idx, model_name in enumerate(models):
+        pred_path = os.path.join(results_dir, model_name, f"fold_{fold}", f"{horizon}_predictions.csv")
+        
+        if not os.path.exists(pred_path):
+            continue
+        
+        pred_df = pd.read_csv(pred_path, index_col=0, parse_dates=True)
+        
+        # Get true and predicted values
+        y_true = pred_df["y_true"].values
+        y_pred = pred_df["y_pred"].values
+        
+        # Handle delta targets
+        if "y_true_delta" in pred_df.columns:
+            y_true = pred_df["y_true_delta"].values
+        
+        # Calculate residuals
+        residuals = y_true - y_pred
+        
+        ax1, ax2, ax3 = axes[idx, 0], axes[idx, 1], axes[idx, 2]
+        
+        # 1. Residuals vs Predicted (check for heteroscedasticity)
+        ax1.scatter(y_pred, residuals, alpha=0.5, s=20)
+        ax1.axhline(y=0, color="r", linestyle="--", linewidth=2)
+        ax1.set_xlabel("Predicted", fontsize=10)
+        ax1.set_ylabel("Residuals", fontsize=10)
+        ax1.set_title(f"{model_name.replace('Regressor', '')}\nResiduals vs Predicted", 
+                     fontsize=11, fontweight="bold")
+        ax1.grid(alpha=0.3)
+        
+        # 2. Residuals histogram (check for normality)
+        ax2.hist(residuals, bins=50, alpha=0.7, edgecolor="black")
+        ax2.axvline(x=0, color="r", linestyle="--", linewidth=2)
+        ax2.set_xlabel("Residuals", fontsize=10)
+        ax2.set_ylabel("Frequency", fontsize=10)
+        ax2.set_title("Residual Distribution", fontsize=11, fontweight="bold")
+        ax2.grid(alpha=0.3)
+        
+        # Add statistics
+        mean_res = np.mean(residuals)
+        std_res = np.std(residuals)
+        ax2.text(0.05, 0.95, f"Mean: {mean_res:.6f}\nStd: {std_res:.6f}", 
+                transform=ax2.transAxes, verticalalignment="top",
+                bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
+        
+        # 3. Residuals time series (check for autocorrelation)
+        ax3.plot(pred_df.index, residuals, alpha=0.7, linewidth=1)
+        ax3.axhline(y=0, color="r", linestyle="--", linewidth=2)
+        ax3.set_xlabel("Date", fontsize=10)
+        ax3.set_ylabel("Residuals", fontsize=10)
+        ax3.set_title("Residuals Over Time", fontsize=11, fontweight="bold")
+        ax3.grid(alpha=0.3)
+    
+    plt.suptitle(f"Residual Analysis (Fold {fold}, {horizon})", 
+                fontsize=16, fontweight="bold", y=0.995)
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        print(f"Saved residual plots to {save_path}")
+    else:
+        plt.show()
+    
+    plt.close()
+
+
+def create_comprehensive_report(
+    results_dir: str = "data/experiments",
+    output_dir: str = "data/experiments/reports",
+    folds: Optional[List[int]] = None,
+    horizons: Optional[List[str]] = None,
+    cost_per_trade: float = 0.0001
+):
+    """
+    Create comprehensive evaluation report with metrics tables, PnL charts, and residual plots.
+    
+    Args:
+        results_dir: Directory containing experiment results
+        output_dir: Directory to save reports
+        folds: List of folds to include (None = all)
+        horizons: List of horizons to include (None = all)
+        cost_per_trade: Transaction cost per trade
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Load all results
+    print("Loading results...")
+    results_df = load_results(results_dir, folds=folds, horizons=horizons)
+    
+    if results_df.empty:
+        print("No results found!")
+        return
+    
+    print(f"Loaded {len(results_df)} results")
+    
+    # Get available folds and horizons
+    available_folds = sorted(results_df["fold"].unique())
+    available_horizons = sorted(results_df["horizon"].unique())
+    
+    if folds is None:
+        folds = available_folds
+    if horizons is None:
+        horizons = available_horizons
+    
+    # 1. Create metrics tables
+    print("\nCreating metrics tables...")
+    tables_dir = os.path.join(output_dir, "tables")
+    os.makedirs(tables_dir, exist_ok=True)
+    
+    for metric in ["rmse", "mae", "dir_acc"]:
+        for split in ["train", "test"]:
+            table = create_metrics_table(
+                results_df, metric=metric, split=split,
+                save_path=os.path.join(tables_dir, f"{split}_{metric}_table.csv")
+            )
+            print(f"  {split}_{metric}: {table.shape}")
+    
+    # 2. Create PnL charts for each fold and horizon
+    print("\nCreating PnL charts...")
+    pnl_dir = os.path.join(output_dir, "pnl")
+    os.makedirs(pnl_dir, exist_ok=True)
+    
+    for fold in folds:
+        for horizon in horizons:
+            plot_cumulative_pnl(
+                results_dir, fold=fold, horizon=horizon,
+                cost_per_trade=cost_per_trade,
+                save_path=os.path.join(pnl_dir, f"pnl_fold{fold}_{horizon}.png")
+            )
+    
+    # 3. Create residual plots for each fold and horizon
+    print("\nCreating residual plots...")
+    residual_dir = os.path.join(output_dir, "residuals")
+    os.makedirs(residual_dir, exist_ok=True)
+    
+    for fold in folds:
+        for horizon in horizons:
+            plot_residuals(
+                results_dir, fold=fold, horizon=horizon,
+                save_path=os.path.join(residual_dir, f"residuals_fold{fold}_{horizon}.png")
+            )
+    
+    print(f"\nComprehensive report saved to {output_dir}")
+    print(f"  - Tables: {tables_dir}")
+    print(f"  - PnL charts: {pnl_dir}")
+    print(f"  - Residual plots: {residual_dir}")
+
+
 __all__ = [
     "load_results",
     "plot_metrics_comparison",
@@ -493,4 +837,8 @@ __all__ = [
     "plot_metrics_heatmap",
     "plot_fold_comparison",
     "create_comparison_report",
+    "create_metrics_table",
+    "plot_cumulative_pnl",
+    "plot_residuals",
+    "create_comprehensive_report",
 ]
