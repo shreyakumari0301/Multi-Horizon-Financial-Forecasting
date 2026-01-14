@@ -117,9 +117,16 @@ class TransformerRegressor:
                                   num_layers=self.num_layers, dim_feedforward=self.dim_feedforward,
                                   dropout=self.dropout, out_dim=self.out_dim_).to(self.device)
         opt = torch.optim.Adam(model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        # Learning rate scheduler
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            opt, mode='min', factor=0.5, patience=5
+        )
         loss_fn = nn.MSELoss()
 
         def make_loader(Xa, Ya, bs, shuffle):
+            # Make arrays writable by copying to avoid PyTorch warnings
+            Xa = np.asarray(Xa, dtype=np.float32).copy()
+            Ya = np.asarray(Ya, dtype=np.float32).copy()
             ds = TensorDataset(torch.from_numpy(Xa), torch.from_numpy(Ya))
             return DataLoader(ds, batch_size=bs, shuffle=shuffle, drop_last=False)
 
@@ -128,6 +135,9 @@ class TransformerRegressor:
 
         best_va = np.inf
         best_state = None
+        patience_counter = 0
+        early_stop_patience = 10
+        
         for ep in range(self.epochs):
             model.train()
             tr_loss = 0.0
@@ -138,6 +148,8 @@ class TransformerRegressor:
                 pred = model(xb)
                 loss = loss_fn(pred, yb)
                 loss.backward()
+                # Gradient clipping
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 opt.step()
                 tr_loss += loss.item() * len(xb)
             tr_loss /= len(tr_loader.dataset)
@@ -150,10 +162,17 @@ class TransformerRegressor:
                     pred = model(xb)
                     va_loss += loss_fn(pred, yb).item() * len(xb)
             va_loss /= len(va_loader.dataset)
+            
+            scheduler.step(va_loss)
 
             if va_loss < best_va:
                 best_va = va_loss
                 best_state = {k: v.cpu().clone() for k, v in model.state_dict().items()}
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                if patience_counter >= early_stop_patience:
+                    break
 
         if best_state is not None:
             model.load_state_dict(best_state)

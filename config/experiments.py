@@ -10,39 +10,42 @@
 # }
 
 LSTM_GRID = {
-    "seq_len":    [32, 64],
-    "hidden":     [128, 256],
-    "layers":     [1, 2],
-    "dropout":    [0.0, 0.1],
-    "epochs":     [15],      # increase later
-    "batch_size": [128],
-    "lr":         [1e-3],
+    "seq_len":    [64],      # Longer sequences for better context
+    "hidden":     [256],     # Larger capacity
+    "layers":     [2],       # Deeper network
+    "dropout":    [0.1],     # Regularization
+    "epochs":     [50],      # More training
+    "batch_size": [64],      # Smaller batches for better gradients
+    "lr":         [5e-4],    # Lower learning rate for stability
+    "weight_decay": [1e-5],  # L2 regularization
     "val_frac":   [0.1],
     "seed":       [0],
 }
 
 TRANSFORMER_GRID = {
-    "seq_len":        [32, 64],
-    "d_model":        [128],
-    "nhead":          [4],
-    "num_layers":     [2],
-    "dim_feedforward":[256],
+    "seq_len":        [64],      # Longer sequences
+    "d_model":        [256],     # Larger model dimension
+    "nhead":          [8],        # More attention heads
+    "num_layers":     [3],        # Deeper network
+    "dim_feedforward":[512],      # Larger feedforward
     "dropout":        [0.1],
-    "epochs":         [15],
-    "batch_size":     [128],
-    "lr":             [1e-3],
+    "epochs":         [50],       # More training
+    "batch_size":     [64],       # Smaller batches
+    "lr":             [5e-4],     # Lower learning rate
+    "weight_decay":   [1e-5],     # L2 regularization
     "val_frac":       [0.1],
     "seed":           [0],
 }
 
 TCN_GRID = {
-    "seq_len":    [32, 64],
-    "channels":   [(64,64), (64,128)],
+    "seq_len":    [64],          # Longer sequences
+    "channels":   [(128, 256)],  # Larger channels
     "kernel_size":[3],
-    "dropout":    [0.0, 0.1],
-    "epochs":     [15],
-    "batch_size": [128],
-    "lr":         [1e-3],
+    "dropout":    [0.1],         # Regularization
+    "epochs":     [50],          # More training
+    "batch_size": [64],          # Smaller batches
+    "lr":         [5e-4],         # Lower learning rate
+    "weight_decay": [1e-5],      # L2 regularization
     "val_frac":   [0.1],
     "seed":       [0],
 }
