@@ -13,26 +13,28 @@ LSTM_GRID = {
     "seq_len":    [64],      # Longer sequences for better context
     "hidden":     [256],     # Larger capacity
     "layers":     [2],       # Deeper network
-    "dropout":    [0.1],     # Regularization
+    "dropout":    [0.0],     # Less dropout (0.1->0.0) to reduce over-smoothing
     "epochs":     [50],      # More training
     "batch_size": [64],      # Smaller batches for better gradients
-    "lr":         [5e-4],    # Lower learning rate for stability
+    "lr":         [1e-3],    # Higher learning rate (5e-4->1e-3)
     "weight_decay": [1e-5],  # L2 regularization
+    "use_delta_target": [True],  # Use delta y target
     "val_frac":   [0.1],
     "seed":       [0],
 }
 
 TRANSFORMER_GRID = {
-    "seq_len":        [64],      # Longer sequences
+    "seq_len":        [128],     # Increased lookback
     "d_model":        [256],     # Larger model dimension
-    "nhead":          [8],        # More attention heads
-    "num_layers":     [3],        # Deeper network
-    "dim_feedforward":[512],      # Larger feedforward
+    "nhead":          [16],      # More attention heads (8->16)
+    "num_layers":     [5],       # Deeper network (3->5)
+    "dim_feedforward":[512],     # Larger feedforward
     "dropout":        [0.1],
-    "epochs":         [50],       # More training
-    "batch_size":     [64],       # Smaller batches
-    "lr":             [5e-4],     # Lower learning rate
-    "weight_decay":   [1e-5],     # L2 regularization
+    "epochs":         [50],      # More training
+    "batch_size":     [64],      # Smaller batches
+    "lr":             [5e-4],    # Lower learning rate
+    "weight_decay":   [1e-5],    # L2 regularization
+    "direction_loss_weight": [0.3],  # Weight for direction loss
     "val_frac":       [0.1],
     "seed":           [0],
 }
@@ -41,11 +43,12 @@ TCN_GRID = {
     "seq_len":    [64],          # Longer sequences
     "channels":   [(128, 256)],  # Larger channels
     "kernel_size":[3],
-    "dropout":    [0.1],         # Regularization
+    "dropout":    [0.0],         # Less dropout (0.1->0.0) to reduce over-smoothing
     "epochs":     [50],          # More training
     "batch_size": [64],          # Smaller batches
-    "lr":         [5e-4],         # Lower learning rate
+    "lr":         [1e-3],        # Higher learning rate (5e-4->1e-3)
     "weight_decay": [1e-5],      # L2 regularization
+    "use_delta_target": [True],  # Use delta y target
     "val_frac":   [0.1],
     "seed":       [0],
 }

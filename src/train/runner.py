@@ -103,9 +103,24 @@ def run_experiment(
     y_train_pred = model.predict(X_train)
     y_test_pred = model.predict(X_test)
     
+    # Handle delta targets: if model uses delta, convert true values to delta for comparison
+    y_train_true = y_train.copy()
+    y_test_true = y_test.copy()
+    if hasattr(model, 'use_delta_target') and model.use_delta_target:
+        # Convert to delta for proper comparison
+        y_train_delta = np.zeros_like(y_train)
+        y_train_delta[1:] = y_train[1:] - y_train[:-1]
+        y_train_delta[0] = y_train[0]
+        y_train_true = y_train_delta
+        
+        y_test_delta = np.zeros_like(y_test)
+        y_test_delta[1:] = y_test[1:] - y_test[:-1]
+        y_test_delta[0] = y_test[0]
+        y_test_true = y_test_delta
+    
     # Compute metrics
-    train_metrics = compute_metrics(y_train, y_train_pred)
-    test_metrics = compute_metrics(y_test, y_test_pred)
+    train_metrics = compute_metrics(y_train_true, y_train_pred)
+    test_metrics = compute_metrics(y_test_true, y_test_pred)
     
     # Prepare results
     results = {
@@ -131,9 +146,11 @@ def run_experiment(
         
         # Save predictions CSV
         if save_predictions:
+            # Save original y_test for reference, but predictions are delta if use_delta_target
             pred_df = pd.DataFrame({
-                "y_true": y_test,
-                "y_pred": y_test_pred,
+                "y_true": y_test,  # Original target
+                "y_pred": y_test_pred,  # Delta prediction if use_delta_target
+                "y_true_delta": y_test_true if hasattr(model, 'use_delta_target') and model.use_delta_target else y_test,
             }, index=test_index)
             pred_path = os.path.join(exp_dir, f"{horizon}_predictions.csv")
             pred_df.to_csv(pred_path)

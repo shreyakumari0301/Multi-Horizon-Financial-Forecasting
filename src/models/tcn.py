@@ -124,6 +124,7 @@ class TCNRegressor:
                  batch_size: int = 128,
                  lr: float = 1e-3,
                  weight_decay: float = 0.0,
+                 use_delta_target: bool = False,
                  val_frac: float = 0.1,
                  seed: int = 0,
                  device: str | None = None):
@@ -135,6 +136,7 @@ class TCNRegressor:
         self.batch_size = batch_size
         self.lr = lr
         self.weight_decay = weight_decay
+        self.use_delta_target = use_delta_target
         self.val_frac = val_frac
         self.seed = seed
         self.device = torch.device(device) if device else torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -151,6 +153,14 @@ class TCNRegressor:
         y = np.asarray(y, dtype=np.float32)
         if y.ndim == 1:
             y = y[:, None]
+        
+        # Convert to delta target if requested (y[t] - y[t-1])
+        if self.use_delta_target:
+            y_delta = np.zeros_like(y)
+            y_delta[1:] = y[1:] - y[:-1]
+            y_delta[0] = y[0]  # First value stays same
+            y = y_delta
+        
         self.out_dim_ = y.shape[1]
         self.in_dim_ = X.shape[1]
 

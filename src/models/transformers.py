@@ -32,7 +32,15 @@ class _TransformerHead(nn.Module):
         super().__init__()
         self.d_model = d_model
         self.input_proj = nn.Linear(in_dim, d_model)
-        self.pos_encoder = nn.Parameter(torch.randn(1, 1000, d_model))
+        # Sinusoidal positional encoding (better than learnable for time series)
+        self.max_len = 1000
+        pe = torch.zeros(self.max_len, d_model)
+        position = torch.arange(0, self.max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)  # (1, max_len, d_model)
+        self.register_buffer('pos_encoder', pe)
         
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
@@ -72,6 +80,7 @@ class TransformerRegressor:
                  batch_size: int = 128,
                  lr: float = 1e-3,
                  weight_decay: float = 0.0,
+                 direction_loss_weight: float = 0.0,
                  val_frac: float = 0.1,
                  seed: int = 0,
                  device: str | None = None):
@@ -85,6 +94,7 @@ class TransformerRegressor:
         self.batch_size = batch_size
         self.lr = lr
         self.weight_decay = weight_decay
+        self.direction_loss_weight = direction_loss_weight
         self.val_frac = val_frac
         self.seed = seed
         self.device = torch.device(device) if device else torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -121,7 +131,23 @@ class TransformerRegressor:
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             opt, mode='min', factor=0.5, patience=5
         )
-        loss_fn = nn.MSELoss()
+        mse_loss = nn.MSELoss()
+        
+        def direction_loss(pred, target):
+            """Penalize wrong direction predictions."""
+            pred_sign = torch.sign(pred)
+            target_sign = torch.sign(target)
+            wrong_dir = (pred_sign != target_sign).float()
+            return wrong_dir.mean()
+        
+        def combined_loss(pred, target):
+            mse = mse_loss(pred, target)
+            if self.direction_loss_weight > 0:
+                dir_loss = direction_loss(pred, target)
+                return mse + self.direction_loss_weight * dir_loss
+            return mse
+        
+        loss_fn = combined_loss
 
         def make_loader(Xa, Ya, bs, shuffle):
             # Make arrays writable by copying to avoid PyTorch warnings
