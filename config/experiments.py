@@ -34,7 +34,7 @@ TRANSFORMER_GRID = {
     "batch_size":     [64],      # Smaller batches
     "lr":             [5e-4],    # Lower learning rate
     "weight_decay":   [1e-5],    # L2 regularization
-    "direction_loss_weight": [0.3],  # Weight for direction loss
+    "direction_loss_weight": [0.5],  # Increased weight for direction loss (0.3->0.5)
     "val_frac":       [0.1],
     "seed":           [0],
 }
@@ -59,6 +59,27 @@ RIDGE_GRID = {
     "fit_intercept":[True],
     "val_frac":     [0.1],
     "seed":         [0],
+}
+
+# Horizon-specific configurations for faster training on longer horizons
+# For target_h5 and target_h20, we use fewer epochs and larger batches
+# This speeds up training significantly while maintaining performance
+HORIZON_SPECIFIC_CONFIG = {
+    "target_h1": {
+        "lstm": {"epochs": 50, "batch_size": 64},
+        "transformer": {"epochs": 50, "batch_size": 64},
+        "tcn": {"epochs": 50, "batch_size": 64},
+    },
+    "target_h5": {
+        "lstm": {"epochs": 30, "batch_size": 128},  # ~40% faster (30/50 epochs, 2x batch)
+        "transformer": {"epochs": 30, "batch_size": 128},  # ~40% faster
+        "tcn": {"epochs": 30, "batch_size": 128},  # ~40% faster
+    },
+    "target_h20": {
+        "lstm": {"epochs": 25, "batch_size": 128},  # ~50% faster (25/50 epochs, 2x batch)
+        "transformer": {"epochs": 25, "batch_size": 128},  # ~50% faster
+        "tcn": {"epochs": 25, "batch_size": 128},  # ~50% faster
+    },
 }
 
 # Which folds/horizons to train for default M4 run:

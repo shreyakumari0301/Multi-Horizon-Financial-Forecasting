@@ -25,15 +25,39 @@ import config.experiments as experiments
 from src.models.registry import get_model
 from src.train.runner import run_experiment, load_fold_data, compute_metrics
 
+try:
+    from scipy.optimize import minimize
+    HAS_SCIPY = True
+except ImportError:
+    HAS_SCIPY = False
+    print("Warning: scipy not available, will use performance-based weights")
+
 
 def get_grid_params(grid: Dict[str, list], index: int = 0) -> Dict[str, Any]:
     """Extract hyperparameters from a grid by taking the first value of each list."""
     return {k: v[index] if isinstance(v, list) else v for k, v in grid.items()}
 
 
-def create_model(model_name: str, grid: Dict[str, list], grid_index: int = 0, **override_kwargs):
-    """Create a model instance from hyperparameter grid."""
+def create_model(model_name: str, grid: Dict[str, list], grid_index: int = 0, horizon: str = None, **override_kwargs):
+    """
+    Create a model instance from hyperparameter grid.
+    
+    Args:
+        model_name: Name of the model
+        grid: Hyperparameter grid
+        grid_index: Index to use from grid
+        horizon: Target horizon (for horizon-specific configs)
+        **override_kwargs: Additional overrides
+    """
     params = get_grid_params(grid, grid_index)
+    
+    # Apply horizon-specific configurations if available
+    if horizon and hasattr(experiments, 'HORIZON_SPECIFIC_CONFIG'):
+        horizon_config = experiments.HORIZON_SPECIFIC_CONFIG.get(horizon, {})
+        if model_name in horizon_config:
+            params.update(horizon_config[model_name])
+            print(f"    Using horizon-specific config for {model_name}: {horizon_config[model_name]}")
+    
     params.update(override_kwargs)
     return get_model(model_name, **params)
 
@@ -74,6 +98,137 @@ class HybridEnsemble:
     def __repr__(self):
         model_names = [m.__class__.__name__ for m in self.base_models]
         return f"HybridEnsemble(models={model_names}, weights={self.weights})"
+
+
+def optimize_ensemble_weights(
+    base_models: List,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    metric: str = "dir_acc",
+    uses_delta: bool = False
+) -> np.ndarray:
+    """
+    Optimize ensemble weights based on validation performance.
+    
+    Args:
+        base_models: List of fitted base models
+        X_val: Validation features
+        y_val: Validation targets
+        metric: Metric to optimize ("dir_acc", "rmse", "mae")
+        uses_delta: Whether models use delta targets
+    
+    Returns:
+        Optimized weights array
+    """
+    if not HAS_SCIPY:
+        raise ImportError("scipy is required for weight optimization")
+    # Get predictions from all models
+    predictions = []
+    for model in base_models:
+        pred = model.predict(X_val)
+        if pred.ndim == 1:
+            pred = pred[:, None]
+        predictions.append(pred)
+    predictions = np.array(predictions)  # (n_models, n_samples, n_outputs)
+    
+    # Handle delta targets
+    y_val_true = y_val.copy()
+    if uses_delta:
+        y_val_delta = np.zeros_like(y_val)
+        y_val_delta[1:] = y_val[1:] - y_val[:-1]
+        y_val_delta[0] = y_val[0]
+        y_val_true = y_val_delta
+    
+    def objective(weights):
+        """Objective function to minimize (negative of metric to maximize)."""
+        # Normalize weights
+        weights = np.maximum(weights, 0)  # Ensure non-negative
+        weights = weights / (weights.sum() + 1e-10)  # Normalize
+        
+        # Weighted ensemble prediction
+        ensemble_pred = np.tensordot(weights, predictions, axes=1).squeeze()
+        
+        # Compute metric
+        if metric == "dir_acc":
+            # Maximize directional accuracy
+            dir_acc = np.mean(np.sign(ensemble_pred) == np.sign(y_val_true))
+            return -dir_acc  # Negative because we minimize
+        elif metric == "rmse":
+            rmse = np.sqrt(np.mean((ensemble_pred - y_val_true) ** 2))
+            return rmse
+        elif metric == "mae":
+            mae = np.mean(np.abs(ensemble_pred - y_val_true))
+            return mae
+        else:
+            raise ValueError(f"Unknown metric: {metric}")
+    
+    # Initial weights (equal)
+    n_models = len(base_models)
+    initial_weights = np.ones(n_models) / n_models
+    
+    # Constraints: weights sum to 1, all >= 0
+    constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0}
+    bounds = [(0.0, 1.0) for _ in range(n_models)]
+    
+    # Optimize
+    result = minimize(
+        objective,
+        initial_weights,
+        method='SLSQP',
+        bounds=bounds,
+        constraints=constraints,
+        options={'maxiter': 1000}
+    )
+    
+    if result.success:
+        optimal_weights = np.maximum(result.x, 0)  # Ensure non-negative
+        optimal_weights = optimal_weights / optimal_weights.sum()  # Normalize
+        return optimal_weights
+    else:
+        # Fallback to performance-based weights
+        print(f"  Warning: Optimization failed, using performance-based weights")
+        return compute_performance_based_weights(base_models, X_val, y_val, uses_delta)
+
+
+def compute_performance_based_weights(
+    base_models: List,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    uses_delta: bool = False
+) -> np.ndarray:
+    """
+    Compute weights based on individual model performance (inverse RMSE).
+    
+    Args:
+        base_models: List of fitted base models
+        X_val: Validation features
+        y_val: Validation targets
+        uses_delta: Whether models use delta targets
+    
+    Returns:
+        Performance-based weights
+    """
+    y_val_true = y_val.copy()
+    if uses_delta:
+        y_val_delta = np.zeros_like(y_val)
+        y_val_delta[1:] = y_val[1:] - y_val[:-1]
+        y_val_delta[0] = y_val[0]
+        y_val_true = y_val_delta
+    
+    performances = []
+    for model in base_models:
+        pred = model.predict(X_val)
+        # Use directional accuracy as performance metric
+        dir_acc = np.mean(np.sign(pred) == np.sign(y_val_true))
+        performances.append(dir_acc)
+    
+    # Convert to weights (higher performance = higher weight)
+    performances = np.array(performances)
+    # Add small epsilon to avoid zero weights
+    performances = performances + 0.01
+    weights = performances / performances.sum()
+    
+    return weights
 
 
 def save_model(model, save_path: str):
@@ -156,8 +311,8 @@ def train_hybrid_ensemble(
         
         print(f"    - {model_name.upper()}")
         
-        # Create and train model
-        model = create_model(model_name, grid, grid_index=0)
+        # Create and train model with horizon-specific config
+        model = create_model(model_name, grid, grid_index=0, horizon=horizon)
         model.fit(X_train, y_train)
         
         # Evaluate
@@ -193,11 +348,50 @@ def train_hybrid_ensemble(
         
         base_models.append(model)
     
-    # Create hybrid ensemble with Ridge as baseline voter (higher weight)
-    # Weights: Ridge=0.4, LSTM=0.2, Transformer=0.3, TCN=0.1
-    # Order: [Ridge, LSTM, Transformer, TCN] matches base_models order
-    weights = [0.4, 0.2, 0.3, 0.1]  # Ridge, LSTM, Transformer, TCN
-    hybrid = HybridEnsemble(base_models, weights=weights)
+    # Split training data for weight optimization
+    # Use last 20% of training data as validation for weight optimization
+    val_frac = 0.2
+    n_val = max(1, int(val_frac * len(X_train)))
+    n_tr = len(X_train) - n_val
+    
+    X_tr_opt = X_train[:n_tr]
+    y_tr_opt = y_train[:n_tr]
+    X_val_opt = X_train[n_tr:]
+    y_val_opt = y_train[n_tr:]
+    
+    # Check if any model uses delta targets
+    uses_delta = any(hasattr(m, 'use_delta_target') and m.use_delta_target for m in base_models)
+    
+    # Optimize ensemble weights based on validation performance
+    print(f"\n  Optimizing ensemble weights on validation set...")
+    if HAS_SCIPY:
+        try:
+            optimal_weights = optimize_ensemble_weights(
+                base_models=base_models,
+                X_val=X_val_opt,
+                y_val=y_val_opt,
+                metric="dir_acc",  # Optimize for directional accuracy
+                uses_delta=uses_delta
+            )
+            print(f"  Optimized weights: {optimal_weights}")
+            print(f"    Ridge: {optimal_weights[0]:.3f}, LSTM: {optimal_weights[1]:.3f}, "
+                  f"Transformer: {optimal_weights[2]:.3f}, TCN: {optimal_weights[3]:.3f}")
+        except Exception as e:
+            print(f"  Warning: Weight optimization failed ({e}), using performance-based weights")
+            optimal_weights = compute_performance_based_weights(
+                base_models, X_val_opt, y_val_opt, uses_delta
+            )
+    else:
+        print(f"  Using performance-based weights (scipy not available)")
+        optimal_weights = compute_performance_based_weights(
+            base_models, X_val_opt, y_val_opt, uses_delta
+        )
+        print(f"  Performance-based weights: {optimal_weights}")
+        print(f"    Ridge: {optimal_weights[0]:.3f}, LSTM: {optimal_weights[1]:.3f}, "
+              f"Transformer: {optimal_weights[2]:.3f}, TCN: {optimal_weights[3]:.3f}")
+    
+    # Create hybrid ensemble with optimized weights
+    hybrid = HybridEnsemble(base_models, weights=optimal_weights)
     
     # Evaluate hybrid
     y_train_pred_hybrid = hybrid.predict(X_train)
