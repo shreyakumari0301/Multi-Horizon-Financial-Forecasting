@@ -29,13 +29,13 @@ def load_fold_data(fold_dir: str, target_col: str, include_news: bool = True):
     train = pd.read_csv(train_path, index_col=0, parse_dates=True)
     test = pd.read_csv(test_path, index_col=0, parse_dates=True)
     
-    # Technical feature columns (starting with "z_")
-    tech_cols = [c for c in train.columns if c.startswith("z_")]
+    # Technical feature columns (starting with "z_" but not news)
+    tech_cols = [c for c in train.columns if c.startswith("z_") and not c.startswith("z_news_pc")]
     
-    # News feature columns (starting with "news_pc")
+    # News feature columns (starting with "z_news_pc" after scaling)
     news_cols = []
     if include_news:
-        news_cols = [c for c in train.columns if c.startswith("news_pc")]
+        news_cols = [c for c in train.columns if c.startswith("z_news_pc")]
     
     # Combine all feature columns
     feature_cols = tech_cols + news_cols

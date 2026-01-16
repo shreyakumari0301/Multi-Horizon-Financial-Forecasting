@@ -41,8 +41,15 @@ def integrate_news_features(
     print(f"\nLoading news features from: {news_features_path}")
     if not os.path.exists(news_features_path):
         print(f"Warning: News features not found at {news_features_path}")
-        print("Run scripts/features/process_news_features.py first")
-        return
+        print("Creating zero-filled news features (28 components)")
+        # Create zero-filled news features with 28 components
+        news_df = None
+        create_zero_filled = True
+    else:
+        news_df = pd.read_csv(news_features_path, index_col=0, parse_dates=True)
+        create_zero_filled = False
+        print(f"Loaded news features: {news_df.shape}")
+        print(f"Date range: {news_df.index.min()} to {news_df.index.max()}")
     
     news_df = pd.read_csv(news_features_path, index_col=0, parse_dates=True)
     print(f"Loaded news features: {news_df.shape}")
@@ -84,16 +91,32 @@ def integrate_news_features(
         print(f"    Target columns: {len(target_cols)}")
         
         # Merge news features
-        train_news = news_df.reindex(train.index, fill_value=0.0)
-        test_news = news_df.reindex(test.index, fill_value=0.0)
-        
-        # Check if news features exist for this date range
-        train_news_available = train_news.sum(axis=1).sum() > 0
-        test_news_available = test_news.sum(axis=1).sum() > 0
-        
-        if not train_news_available and not test_news_available:
-            print(f"    Warning: No news features available for fold_{k} date range")
-            print(f"    Using zero-filled news features")
+        if create_zero_filled:
+            # Create zero-filled news features (28 components)
+            n_news_features = 28
+            news_cols = [f"news_pc{i+1}" for i in range(n_news_features)]
+            train_news = pd.DataFrame(
+                0.0,
+                index=train.index,
+                columns=news_cols
+            )
+            test_news = pd.DataFrame(
+                0.0,
+                index=test.index,
+                columns=news_cols
+            )
+            print(f"    Created zero-filled news features: {n_news_features} components")
+        else:
+            train_news = news_df.reindex(train.index, fill_value=0.0)
+            test_news = news_df.reindex(test.index, fill_value=0.0)
+            
+            # Check if news features exist for this date range
+            train_news_available = train_news.sum(axis=1).sum() > 0
+            test_news_available = test_news.sum(axis=1).sum() > 0
+            
+            if not train_news_available and not test_news_available:
+                print(f"    Warning: No news features available for fold_{k} date range")
+                print(f"    Using zero-filled news features")
         
         # Combine technical and news features
         train_combined = pd.concat([
@@ -110,7 +133,10 @@ def integrate_news_features(
         
         # Re-scale features (including news features)
         # Get all feature columns
-        all_feature_cols = tech_cols + list(news_df.columns)
+        if create_zero_filled:
+            all_feature_cols = tech_cols + list(train_news.columns)
+        else:
+            all_feature_cols = tech_cols + list(news_df.columns)
         
         # Scale features
         scaler = StandardScaler()
@@ -119,7 +145,10 @@ def integrate_news_features(
         
         # Create scaled feature columns
         scaled_cols = [f"z_{c}" if not c.startswith("z_") else c for c in tech_cols]
-        scaled_cols += [f"z_{c}" for c in news_df.columns]
+        if create_zero_filled:
+            scaled_cols += [f"z_{c}" for c in train_news.columns]
+        else:
+            scaled_cols += [f"z_{c}" for c in news_df.columns]
         
         # Create output DataFrames
         train_out = pd.DataFrame(
@@ -152,21 +181,31 @@ def integrate_news_features(
             scaler_meta["mean"] = scaler.mean_.tolist()
             scaler_meta["scale"] = scaler.scale_.tolist()
             scaler_meta["n_technical"] = len(tech_cols)
-            scaler_meta["n_news"] = len(news_df.columns)
+            if create_zero_filled:
+                scaler_meta["n_news"] = len(train_news.columns)
+            else:
+                scaler_meta["n_news"] = len(news_df.columns)
             scaler_meta["n_total"] = len(all_feature_cols)
             
             with open(scaler_meta_path, 'w') as f:
                 json.dump(scaler_meta, f, indent=2)
         
-        print(f"    ✓ Updated fold_{k}: {len(tech_cols)} technical + {len(news_df.columns)} news = {len(all_feature_cols)} total features")
+        n_news = len(train_news.columns) if create_zero_filled else len(news_df.columns)
+        print(f"    ✓ Updated fold_{k}: {len(tech_cols)} technical + {n_news} news = {len(all_feature_cols)} total features")
     
     print("\n" + "=" * 70)
     print("Integration Complete!")
     print("=" * 70)
-    print(f"\nAll folds updated with combined features:")
-    print(f"  - Technical features: {len(tech_cols)}")
-    print(f"  - News features: {len(news_df.columns)}")
-    print(f"  - Total features: {len(tech_cols) + len(news_df.columns)}")
+    if create_zero_filled:
+        print(f"\nAll folds updated with combined features:")
+        print(f"  - Technical features: {len(tech_cols)}")
+        print(f"  - News features: 28 (zero-filled - no news data available)")
+        print(f"  - Total features: {len(tech_cols) + 28}")
+    else:
+        print(f"\nAll folds updated with combined features:")
+        print(f"  - Technical features: {len(tech_cols)}")
+        print(f"  - News features: {len(news_df.columns)}")
+        print(f"  - Total features: {len(tech_cols) + len(news_df.columns)}")
 
 
 def main():

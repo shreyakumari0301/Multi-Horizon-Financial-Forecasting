@@ -12,7 +12,7 @@ import os
 import pickle
 import json
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import numpy as np
 import pandas as pd
 import torch
@@ -461,8 +461,115 @@ def train_hybrid_ensemble(
     return results
 
 
+def ensure_news_features_integrated(
+    splits_dir: str = "data/splits",
+    news_path: Optional[str] = None,
+    processed_dir: str = "data/processed"
+) -> bool:
+    """
+    Ensure news features are integrated into train/test splits.
+    
+    Checks if news features are already integrated, and if not, processes them
+    from raw news data if available.
+    
+    Args:
+        splits_dir: Directory with train/test splits
+        news_path: Optional path to raw news headlines CSV
+        processed_dir: Directory for processed features
+    
+    Returns:
+        True if news features are available, False otherwise
+    """
+    # Check if news features are already integrated
+    fold_0_dir = os.path.join(splits_dir, "fold_0")
+    train_path = os.path.join(fold_0_dir, "train.csv")
+    
+    if os.path.exists(train_path):
+        train = pd.read_csv(train_path, index_col=0, nrows=1)  # Just check columns
+        news_cols = [c for c in train.columns if c.startswith("z_news_pc")]
+        if len(news_cols) > 0:
+            print(f"✓ News features already integrated: {len(news_cols)} features found")
+            return True
+    
+    # News features not integrated - check if we can process them
+    news_features_path = os.path.join(processed_dir, "news_features_28d.csv")
+    
+    # If processed news features exist, integrate them
+    if os.path.exists(news_features_path):
+        print("\n" + "=" * 70)
+        print("Integrating Existing News Features")
+        print("=" * 70)
+        
+        try:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "integrate_news_features",
+                os.path.join(project_root, "scripts", "features", "integrate_news_features.py")
+            )
+            integrate_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(integrate_module)
+            
+            integrate_module.integrate_news_features(
+                processed_dir=processed_dir,
+                splits_dir=splits_dir,
+                news_features_path=news_features_path
+            )
+            print("✓ News features integrated successfully")
+            return True
+        except Exception as e:
+            print(f"⚠ Failed to integrate news features: {e}")
+            return False
+    
+    # If raw news data provided, process it
+    if news_path and os.path.exists(news_path):
+        print("\n" + "=" * 70)
+        print("Processing News Features from Raw Data")
+        print("=" * 70)
+        
+        try:
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "process_all_features",
+                os.path.join(project_root, "scripts", "features", "process_all_features.py")
+            )
+            process_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(process_module)
+            
+            process_module.process_all_features(
+                processed_dir=processed_dir,
+                splits_dir=splits_dir,
+                news_path=news_path,
+                n_components=28
+            )
+            print("✓ News features processed and integrated successfully")
+            return True
+        except Exception as e:
+            print(f"⚠ Failed to process news features: {e}")
+            return False
+    
+    # No news data available
+    print("⚠ No news features available - using technical features only")
+    return False
+
+
 def main():
     """Train hybrid models on all folds and horizons."""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Train hybrid ensemble models")
+    parser.add_argument(
+        "--news_path",
+        type=str,
+        default=None,
+        help="Path to raw news headlines CSV (optional, will process if provided)"
+    )
+    parser.add_argument(
+        "--skip_news",
+        action="store_true",
+        help="Skip news feature processing even if available"
+    )
+    
+    args = parser.parse_args()
     
     # All folds and horizons
     ALL_FOLDS = list(range(9))  # fold_0 to fold_8
@@ -482,6 +589,22 @@ def main():
     print(f"Splits: {SPLITS_DIR}")
     print(f"Results: {RESULTS_DIR}")
     print(f"Models: {MODELS_DIR}")
+    print("=" * 70)
+    
+    # Ensure news features are integrated (if not skipped)
+    has_news = False
+    if not args.skip_news:
+        has_news = ensure_news_features_integrated(
+            splits_dir=SPLITS_DIR,
+            news_path=args.news_path
+        )
+        if has_news:
+            print("✓ Training with 38 features (10 technical + 28 news)")
+        else:
+            print("✓ Training with 10 features (technical only)")
+    else:
+        print("⚠ Skipping news feature processing (--skip_news flag)")
+    
     print("=" * 70)
     
     all_results = []
