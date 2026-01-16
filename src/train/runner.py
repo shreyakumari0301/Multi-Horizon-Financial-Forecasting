@@ -8,13 +8,14 @@ from pathlib import Path
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 
-def load_fold_data(fold_dir: str, target_col: str):
+def load_fold_data(fold_dir: str, target_col: str, include_news: bool = True):
     """
     Load training and test data for a fold.
     
     Args:
         fold_dir: Directory containing train.csv and test.csv
         target_col: Target column name (e.g., "target_h1")
+        include_news: Whether to include news features (default: True)
     
     Returns:
         Tuple of (X_train, y_train, X_test, y_test, test_index)
@@ -28,14 +29,27 @@ def load_fold_data(fold_dir: str, target_col: str):
     train = pd.read_csv(train_path, index_col=0, parse_dates=True)
     test = pd.read_csv(test_path, index_col=0, parse_dates=True)
     
-    # Feature columns are those starting with "z_"
-    feature_cols = [c for c in train.columns if c.startswith("z_")]
+    # Technical feature columns (starting with "z_")
+    tech_cols = [c for c in train.columns if c.startswith("z_")]
+    
+    # News feature columns (starting with "news_pc")
+    news_cols = []
+    if include_news:
+        news_cols = [c for c in train.columns if c.startswith("news_pc")]
+    
+    # Combine all feature columns
+    feature_cols = tech_cols + news_cols
+    
+    if len(feature_cols) == 0:
+        raise ValueError("No feature columns found in data")
     
     X_train = train[feature_cols].values
     y_train = train[target_col].values
     X_test = test[feature_cols].values
     y_test = test[target_col].values
     test_index = test.index
+    
+    print(f"Loaded features: {len(tech_cols)} technical + {len(news_cols)} news = {len(feature_cols)} total")
     
     return X_train, y_train, X_test, y_test, test_index
 
