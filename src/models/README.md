@@ -32,6 +32,12 @@ This module contains all model implementations with a unified scikit-learn style
 - **Features**: Dilated convolutions, residual connections
 - **Use Case**: Efficient temporal modeling
 
+### ESN (`esn.py`)
+- **Class**: `ESNRegressor`
+- **Type**: Echo State Network (Reservoir Computing)
+- **Features**: Random reservoir, leaky integrator, Ridge output layer
+- **Use Case**: Fast training, rich temporal representations
+
 ## Architecture
 
 All models follow the same design pattern:
@@ -128,6 +134,15 @@ predictions = model.predict(X_test)
 - `alpha`: Regularization strength
 - `fit_intercept`: Whether to fit intercept
 
+### ESN-Specific
+- `hidden_size`: Reservoir size (400-800)
+- `spectral_radius`: Maximum eigenvalue of reservoir (0.85-0.95)
+- `leak_rate`: Leaky integrator rate (0.3-1.0)
+- `ridge_alpha`: Ridge regularization for output layer (0.3-3.0)
+- `washout`: Number of initial timesteps to discard (100)
+- `density`: Reservoir connectivity density (0.1)
+- `state_clip`: Optional state clipping value
+
 ## Input/Output Format
 
 - **Input X**: `(N, F)` numpy array where N = samples, F = features
@@ -141,4 +156,5 @@ predictions = model.predict(X_test)
 - `transformers.py`: Transformer implementation
 - `tcn.py`: TCN implementation
 - `ridge.py`: Ridge regression implementation
+- `esn.py`: Echo State Network implementation
 - `__init__.py`: Package exports

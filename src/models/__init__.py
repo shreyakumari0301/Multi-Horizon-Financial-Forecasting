@@ -6,14 +6,16 @@ from . import lstm
 from . import transformers
 from . import tcn
 from . import ridge
+from . import esn
 
 # Export regressor classes directly
 from .lstm import LSTMRegressor
 from .transformers import TransformerRegressor
 from .tcn import TCNRegressor
 from .ridge import RidgeRegressor
+from .esn import ESNRegressor
 
 __all__ = [
     "get_model", "list_models", "register_model",
-    "LSTMRegressor", "TransformerRegressor", "TCNRegressor", "RidgeRegressor",
+    "LSTMRegressor", "TransformerRegressor", "TCNRegressor", "RidgeRegressor", "ESNRegressor",
 ]

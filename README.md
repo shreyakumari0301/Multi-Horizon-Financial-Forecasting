@@ -1,6 +1,6 @@
 # DSAI - Deep Learning for Time Series Forecasting
 
-A comprehensive research framework for time series forecasting using deep learning models (LSTM, Transformer, TCN) with Ridge regression as a baseline. This project addresses the challenge of predicting future values in multivariate time series data while maintaining temporal dependencies and avoiding common pitfalls in sequence modeling.
+A comprehensive research framework for time series forecasting using deep learning models (LSTM, Transformer, TCN, ESN) with Ridge regression as a baseline. This project addresses the challenge of predicting future values in multivariate time series data while maintaining temporal dependencies and avoiding common pitfalls in sequence modeling.
 
 ## Problem Statement
 
@@ -18,7 +18,7 @@ Traditional machine learning approaches treat each observation independently, lo
 
 This project aims to:
 
-1. **Develop a unified framework** for comparing deep learning models (LSTM, Transformer, TCN) against a linear baseline (Ridge)
+1. **Develop a unified framework** for comparing deep learning models (LSTM, Transformer, TCN, ESN) against a linear baseline (Ridge)
 2. **Address over-smoothing** in deep models through delta target prediction and architectural improvements
 3. **Ensure proper temporal validation** through chronological splits and left-padding strategies
 4. **Provide comprehensive evaluation** including financial metrics (PnL, Sharpe ratio) and residual analysis
@@ -135,6 +135,23 @@ direction_loss = -mean(sign(y_pred) * sign(y_true))
 - Causal padding ensures no future information leakage
 - Residual connections help with training deep networks
 
+#### Echo State Network (ESN) Architecture
+
+**Challenge**: ESNs require careful reservoir design to balance memory capacity and stability.
+
+**Approach**:
+- Randomly initialized reservoir with controlled spectral radius (0.85-0.95)
+- Sparse connectivity (density 0.1) for efficient computation
+- Leaky integrator (leak_rate 0.3-1.0) for temporal memory
+- Washout period (100 timesteps) to discard transient states
+- Ridge regression on reservoir states for output mapping
+
+**Rationale**:
+- Reservoir computing provides rich temporal representations without backpropagation
+- Spectral radius control ensures echo state property (bounded states)
+- Only output layer is trained, making ESN very fast to train
+- Effective for capturing complex temporal dynamics with minimal training
+
 #### Ridge Regression Baseline
 
 **Purpose**: Provides a linear baseline to assess whether deep learning adds value.
@@ -158,10 +175,11 @@ direction_loss = -mean(sign(y_pred) * sign(y_true))
 #### Hyperparameter Selection
 
 Models use different hyperparameters optimized for their architectures:
+- **Ridge**: Grid search over regularization strength (alpha 0.1-10.0)
+- **ESN**: Reservoir size (400-800), spectral radius (0.85-0.95), leak rate (0.3-1.0), ridge alpha (0.3-3.0)
 - **LSTM**: Higher learning rate (1e-3), lower dropout (0.0), delta targets
-- **Transformer**: Lower learning rate (5e-4), direction loss weight (0.3), deeper network
+- **Transformer**: Lower learning rate (5e-4), direction loss weight (0.5), deeper network
 - **TCN**: Higher learning rate (1e-3), lower dropout (0.0), delta targets
-- **Ridge**: Grid search over regularization strength
 
 ### Evaluation Framework
 
@@ -210,7 +228,7 @@ Results aggregated across multiple folds provide:
 ## Technical Highlights
 
 - **Model Registry System**: Dynamic model instantiation enables easy experimentation
-- **Hybrid Ensemble**: Weighted combination of models (Ridge 40%, Transformer 30%, LSTM 20%, TCN 10%) leverages strengths of each
+- **Hybrid Ensemble**: Weighted combination of models (Ridge, ESN, LSTM, Transformer, TCN) with validation-based weight optimization leverages strengths of each
 - **Delta Target Reconstruction**: Automatic handling of delta predictions with proper reconstruction
 - **Best Model Checkpointing**: Prevents overfitting by saving validation-optimal models
 - **Comprehensive Visualization**: Metrics tables, PnL charts, and residual plots for thorough analysis
@@ -220,10 +238,11 @@ Results aggregated across multiple folds provide:
 The framework enables systematic comparison of models across multiple folds and horizons:
 
 - **Ridge Baseline**: Provides linear baseline, surprisingly competitive directional accuracy
+- **ESN**: Fast reservoir computing approach, captures temporal dynamics with minimal training
 - **LSTM**: Captures temporal dependencies but benefits from delta targets to reduce smoothing
 - **Transformer**: Best directional accuracy through attention mechanism and direction loss
 - **TCN**: Efficient temporal modeling with dilated convolutions
-- **Hybrid Ensemble**: Combines model strengths for robust predictions
+- **Hybrid Ensemble**: Combines model strengths (5 models) with validation-based weight optimization for robust predictions
 
 ## Research Applications
 

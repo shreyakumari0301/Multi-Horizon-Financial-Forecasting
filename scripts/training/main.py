@@ -163,7 +163,7 @@ def main():
     args = parser.parse_args()
     
     # Configuration from experiments.py
-    MODELS = ["lstm", "transformer", "tcn", "ridge"]  # or select specific models
+    MODELS = ["ridge", "esn", "lstm", "transformer", "tcn"]  # or select specific models
     FOLDS = experiments.FOLDS
     HORIZONS = experiments.HORIZONS
     
@@ -205,10 +205,11 @@ def main():
         
         # Get grid from experiments
         grid_map = {
+            "ridge": experiments.RIDGE_GRID,
+            "esn": experiments.ESN_GRID,
             "lstm": experiments.LSTM_GRID,
             "transformer": experiments.TRANSFORMER_GRID,
             "tcn": experiments.TCN_GRID,
-            "ridge": experiments.RIDGE_GRID,
         }
         
         grid = grid_map.get(model_name)
