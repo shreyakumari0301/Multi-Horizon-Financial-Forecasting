@@ -98,6 +98,11 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                <span id="newsCount">0</span> relevant news items retrieved
+                            </small>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -169,10 +174,16 @@
                 const result = await response.json();
 
                 if (result.success) {
+                    const newsCount = document.getElementById('newsCount');
+                    if (newsCount) {
+                        newsCount.textContent = result.retrieved_count || result.news.length;
+                    }
+                    
                     container.innerHTML = result.news.map(news => `
                         <div class="news-item sentiment-${news.sentiment}">
                             <small class="text-muted">${news.date}</small>
                             <p class="mb-0 mt-1">${news.headline}</p>
+                            ${news.impact ? `<small class="text-muted d-block mt-1"><em>${news.impact}</em></small>` : ''}
                         </div>
                     `).join('');
                 } else {

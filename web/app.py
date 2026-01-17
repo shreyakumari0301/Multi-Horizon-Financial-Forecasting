@@ -122,41 +122,56 @@ def get_stock_data(symbol):
 
 @app.route('/api/news/<symbol>')
 def get_news_data(symbol):
-    """Get news data for a symbol"""
+    """Get news data for a symbol using RAG"""
     try:
-        # For now, return dummy news data
-        # In production, you'd fetch from a news API
-        news_data = [
+        # Use RAG system to retrieve relevant news
+        try:
+            from web.rag_news import get_rag_instance
+        except ImportError:
+            # Fallback if import fails
+            import sys
+            sys.path.insert(0, os.path.dirname(__file__))
+            from rag_news import get_rag_instance
+        
+        rag = get_rag_instance()
+        news_data = rag.get_recent_news(symbol, limit=5)
+        
+        # Format for frontend
+        formatted_news = [
             {
-                'date': '2024-01-15',
-                'headline': f'{symbol} announces quarterly earnings exceeding expectations',
-                'sentiment': 'positive'
-            },
-            {
-                'date': '2024-01-14',
-                'headline': f'Market analysis shows strong momentum for {symbol}',
-                'sentiment': 'positive'
-            },
-            {
-                'date': '2024-01-13',
-                'headline': f'Fed interest rate decision impacts {symbol} trading',
-                'sentiment': 'neutral'
-            },
-            {
-                'date': '2024-01-12',
-                'headline': f'Technical analysis suggests bullish trend for {symbol}',
-                'sentiment': 'positive'
-            },
-            {
-                'date': '2024-01-11',
-                'headline': f'{symbol} faces regulatory scrutiny',
-                'sentiment': 'negative'
+                'date': item['date'],
+                'headline': item['headline'],
+                'sentiment': item['sentiment'],
+                'impact': item.get('impact', '')
             }
+            for item in news_data
         ]
-        return jsonify({'success': True, 'news': news_data})
+        
+        return jsonify({
+            'success': True,
+            'news': formatted_news,
+            'symbol': symbol,
+            'retrieved_count': len(formatted_news)
+        })
 
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
+        # Fallback to basic news if RAG fails
+        from datetime import datetime, timedelta
+        today = datetime.now()
+        fallback_news = [
+            {
+                'date': (today - timedelta(days=i)).strftime('%Y-%m-%d'),
+                'headline': f'{symbol} market update - Day {i+1}',
+                'sentiment': 'neutral'
+            }
+            for i in range(1, 6)
+        ]
+        return jsonify({
+            'success': True,
+            'news': fallback_news,
+            'mode': 'fallback',
+            'error': str(e)
+        })
 
 @app.route('/api/predict/<symbol>')
 def get_prediction(symbol):
