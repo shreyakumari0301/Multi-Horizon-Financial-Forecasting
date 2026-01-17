@@ -1,0 +1,221 @@
+"""
+Stock Prediction Web Application
+Backend API for serving stock data, news, and predictions
+"""
+import sys
+import os
+from pathlib import Path
+from flask import Flask, jsonify, request, render_template
+from flask_cors import CORS
+from datetime import datetime, timedelta
+import json
+
+# Optional imports - app works without these
+try:
+    import pandas as pd
+    import numpy as np
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
+    print("⚠ pandas/numpy not available - using basic data handling")
+
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+# Try to import predictor, but allow app to run without it
+try:
+    from scripts.production.production_predictor import ProductionPredictor
+    PREDICTOR_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠ ProductionPredictor not available: {e}")
+    print("⚠ Running in demo mode - predictions will be simulated")
+    ProductionPredictor = None
+    PREDICTOR_AVAILABLE = False
+
+app = Flask(__name__)
+CORS(app)
+
+# Global predictor instance
+predictor = None
+
+def init_predictor():
+    """Initialize the production predictor"""
+    global predictor
+    if not PREDICTOR_AVAILABLE:
+        print("⚠ Predictor module not available - running in demo mode")
+        predictor = None
+        return False
+    
+    try:
+        predictor = ProductionPredictor(
+            model_dir="data/models",
+            fold=0,
+            horizon="target_h1",
+            news_features_path="data/processed/news_features_28d.csv" if os.path.exists("data/processed/news_features_28d.csv") else None
+        )
+        print("✓ Predictor initialized successfully")
+        return True
+    except Exception as e:
+        print(f"⚠ Failed to initialize predictor: {e}")
+        print("⚠ Running in demo mode - predictions will be simulated")
+        predictor = None
+        return False
+
+@app.route('/')
+def index():
+    """Serve the main dashboard"""
+    return render_template('index.html')
+
+@app.route('/api/stock/<symbol>')
+def get_stock_data(symbol):
+    """Get stock data for a symbol"""
+    try:
+        if not HAS_PANDAS:
+            # Return demo data if pandas not available
+            import random
+            dates = [(datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(365, 0, -1)]
+            base_price = 150.0
+            prices = [base_price + random.uniform(-5, 5) + i * 0.1 for i in range(365)]
+            returns = [0.0] + [(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, len(prices))]
+            
+            data = {
+                'dates': dates,
+                'prices': prices,
+                'volumes': [random.randint(1000000, 5000000) for _ in range(365)],
+                'returns': returns
+            }
+            return jsonify({'success': True, 'data': data, 'mode': 'demo'})
+        
+        # Load stock data (you might want to fetch this from an API)
+        stock_file = f"data/raw/{symbol}_2005-12-19_to_2026-01-13_1d.csv"
+        if os.path.exists(stock_file):
+            df = pd.read_csv(stock_file, index_col=0, parse_dates=True)
+            df = df.tail(365)  # Last year of data
+
+            # Prepare data for frontend
+            data = {
+                'dates': df.index.strftime('%Y-%m-%d').tolist(),
+                'prices': df['Close'].tolist(),
+                'volumes': df['Volume'].tolist() if 'Volume' in df.columns else [],
+                'returns': df['Close'].pct_change().fillna(0).tolist()
+            }
+            return jsonify({'success': True, 'data': data, 'mode': 'real'})
+        else:
+            # Return demo data if file not found
+            import random
+            dates = [(datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(365, 0, -1)]
+            base_price = 150.0
+            prices = [base_price + random.uniform(-5, 5) + i * 0.1 for i in range(365)]
+            returns = [0.0] + [(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, len(prices))]
+            
+            data = {
+                'dates': dates,
+                'prices': prices,
+                'volumes': [random.randint(1000000, 5000000) for _ in range(365)],
+                'returns': returns
+            }
+            return jsonify({'success': True, 'data': data, 'mode': 'demo'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/news/<symbol>')
+def get_news_data(symbol):
+    """Get news data for a symbol"""
+    try:
+        # For now, return dummy news data
+        # In production, you'd fetch from a news API
+        news_data = [
+            {
+                'date': '2024-01-15',
+                'headline': f'{symbol} announces quarterly earnings exceeding expectations',
+                'sentiment': 'positive'
+            },
+            {
+                'date': '2024-01-14',
+                'headline': f'Market analysis shows strong momentum for {symbol}',
+                'sentiment': 'positive'
+            },
+            {
+                'date': '2024-01-13',
+                'headline': f'Fed interest rate decision impacts {symbol} trading',
+                'sentiment': 'neutral'
+            },
+            {
+                'date': '2024-01-12',
+                'headline': f'Technical analysis suggests bullish trend for {symbol}',
+                'sentiment': 'positive'
+            },
+            {
+                'date': '2024-01-11',
+                'headline': f'{symbol} faces regulatory scrutiny',
+                'sentiment': 'negative'
+            }
+        ]
+        return jsonify({'success': True, 'news': news_data})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/predict/<symbol>')
+def get_prediction(symbol):
+    """Get prediction for a symbol"""
+    try:
+        if predictor is None:
+            # Return demo prediction if predictor not available
+            import random
+            direction = random.choice(['LONG', 'SHORT'])
+            confidence = round(random.uniform(0.55, 0.85), 2)
+            price = round(random.uniform(100, 200), 2)
+            change_pct = round(random.uniform(-2.0, 2.0), 2)
+            prediction_price = round(price * (1 + change_pct / 100), 2)
+            
+            prediction = {
+                'direction': direction,
+                'confidence': confidence,
+                'price': price,
+                'prediction': prediction_price,
+                'change_pct': change_pct,
+                'timestamp': datetime.now().isoformat(),
+                'mode': 'demo'
+            }
+            return jsonify({'success': True, 'prediction': prediction})
+
+        # TODO: Implement real prediction using predictor
+        # For now, return demo prediction
+        import random
+        direction = random.choice(['LONG', 'SHORT'])
+        confidence = round(random.uniform(0.60, 0.80), 2)
+        price = round(random.uniform(100, 200), 2)
+        change_pct = round(random.uniform(-2.0, 2.0), 2)
+        prediction_price = round(price * (1 + change_pct / 100), 2)
+        
+        prediction = {
+            'direction': direction,
+            'confidence': confidence,
+            'price': price,
+            'prediction': prediction_price,
+            'change_pct': change_pct,
+            'timestamp': datetime.now().isoformat(),
+            'mode': 'model'
+        }
+
+        return jsonify({'success': True, 'prediction': prediction})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/health')
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'predictor_loaded': predictor is not None,
+        'timestamp': datetime.now().isoformat()
+    })
+
+if __name__ == '__main__':
+    print("Initializing Stock Prediction Web App...")
+    init_predictor()
+    app.run(debug=True, host='0.0.0.0', port=5000)

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Prediction Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .card {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .stock-chart {
+            height: 400px;
+            width: 100%;
+        }
+        .prediction-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .news-item {
+            padding: 10px;
+            border-left: 4px solid;
+            margin-bottom: 10px;
+            background: white;
+            border-radius: 5px;
+        }
+        .sentiment-positive { border-left-color: #28a745; }
+        .sentiment-neutral { border-left-color: #ffc107; }
+        .sentiment-negative { border-left-color: #dc3545; }
+        .symbol-selector {
+            max-width: 300px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1">📈 Stock Prediction Dashboard</span>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Symbol Selection -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Select Stock Symbol</h5>
+                        <div class="d-flex gap-2 align-items-center">
+                            <select id="symbolSelect" class="form-select symbol-selector">
+                                <option value="AAPL">AAPL - Apple Inc.</option>
+                                <option value="GOOGL">GOOGL - Alphabet Inc.</option>
+                                <option value="MSFT">MSFT - Microsoft Corp.</option>
+                                <option value="AMZN">AMZN - Amazon.com Inc.</option>
+                                <option value="TSLA">TSLA - Tesla Inc.</option>
+                                <option value="NVDA">NVDA - NVIDIA Corp.</option>
+                            </select>
+                            <button id="loadBtn" class="btn btn-primary">Load Data</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stock Chart -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Stock Price Chart</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="stockChart" class="stock-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Recent News -->
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">📰 Recent News</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="newsContainer">
+                            <div class="text-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Prediction -->
+            <div class="col-md-6 mb-4">
+                <div class="card prediction-card">
+                    <div class="card-header">
+                        <h5 class="mb-0">🔮 AI Prediction (Next Day)</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="predictionContainer">
+                            <div class="text-center">
+                                <div class="spinner-border text-light" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let stockChart = null;
+        let currentSymbol = 'AAPL';
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadData();
+        });
+
+        // Load button click
+        document.getElementById('loadBtn').addEventListener('click', function() {
+            currentSymbol = document.getElementById('symbolSelect').value;
+            loadData();
+        });
+
+        async function loadData() {
+            await Promise.all([
+                loadStockData(),
+                loadNewsData(),
+                loadPrediction()
+            ]);
+        }
+
+        async function loadStockData() {
+            try {
+                const response = await fetch(`/api/stock/${currentSymbol}`);
+                const result = await response.json();
+
+                if (result.success) {
+                    updateStockChart(result.data);
+                } else {
+                    console.error('Failed to load stock data:', result.error);
+                }
+            } catch (error) {
+                console.error('Error loading stock data:', error);
+            }
+        }
+
+        async function loadNewsData() {
+            const container = document.getElementById('newsContainer');
+
+            try {
+                const response = await fetch(`/api/news/${currentSymbol}`);
+                const result = await response.json();
+
+                if (result.success) {
+                    container.innerHTML = result.news.map(news => `
+                        <div class="news-item sentiment-${news.sentiment}">
+                            <small class="text-muted">${news.date}</small>
+                            <p class="mb-0 mt-1">${news.headline}</p>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = '<p class="text-muted">No news data available</p>';
+                }
+            } catch (error) {
+                container.innerHTML = '<p class="text-danger">Error loading news</p>';
+                console.error('Error loading news:', error);
+            }
+        }
+
+        async function loadPrediction() {
+            const container = document.getElementById('predictionContainer');
+
+            try {
+                const response = await fetch(`/api/predict/${currentSymbol}`);
+                const result = await response.json();
+
+                if (result.success) {
+                    const pred = result.prediction;
+                    const changeColor = pred.change_pct >= 0 ? 'text-success' : 'text-danger';
+                    const arrow = pred.change_pct >= 0 ? '↑' : '↓';
+
+                    container.innerHTML = `
+                        <div class="row text-center">
+                            <div class="col-6">
+                                <h6>Direction</h6>
+                                <h3 class="${pred.direction === 'LONG' ? 'text-success' : 'text-danger'}">
+                                    ${pred.direction} ${arrow}
+                                </h3>
+                            </div>
+                            <div class="col-6">
+                                <h6>Confidence</h6>
+                                <h3>${(pred.confidence * 100).toFixed(1)}%</h3>
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row text-center">
+                            <div class="col-6">
+                                <small>Current Price</small>
+                                <h5>$${pred.price.toFixed(2)}</h5>
+                            </div>
+                            <div class="col-6">
+                                <small>Predicted</small>
+                                <h5 class="${changeColor}">$${pred.prediction.toFixed(2)}</h5>
+                            </div>
+                        </div>
+                        <div class="text-center mt-3">
+                            <span class="badge ${changeColor} fs-6">
+                                ${pred.change_pct >= 0 ? '+' : ''}${pred.change_pct.toFixed(2)}%
+                            </span>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = '<p class="text-light">Prediction unavailable</p>';
+                }
+            } catch (error) {
+                container.innerHTML = '<p class="text-light">Error loading prediction</p>';
+                console.error('Error loading prediction:', error);
+            }
+        }
+
+        function updateStockChart(data) {
+            const ctx = document.getElementById('stockChart').getContext('2d');
+
+            if (stockChart) {
+                stockChart.destroy();
+            }
+
+            stockChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.dates,
+                    datasets: [{
+                        label: `${currentSymbol} Price`,
+                        data: data.prices,
+                        borderColor: 'rgb(75, 192, 192)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                        tension: 0.1,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Price ($)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>

@@ -170,23 +170,40 @@ def optimize_ensemble_weights(
     constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1.0}
     bounds = [(0.0, 1.0) for _ in range(n_models)]
     
-    # Optimize
-    result = minimize(
-        objective,
-        initial_weights,
-        method='SLSQP',
-        bounds=bounds,
-        constraints=constraints,
-        options={'maxiter': 1000}
-    )
+    # Optimize with multiple methods for robustness
+    methods = ['SLSQP', 'L-BFGS-B']
+    best_result = None
+    best_value = np.inf
     
-    if result.success:
-        optimal_weights = np.maximum(result.x, 0)  # Ensure non-negative
-        optimal_weights = optimal_weights / optimal_weights.sum()  # Normalize
+    for method in methods:
+        try:
+            result = minimize(
+                objective,
+                initial_weights,
+                method=method,
+                bounds=bounds,
+                constraints=constraints if method == 'SLSQP' else None,
+                options={'maxiter': 1000, 'ftol': 1e-6}
+            )
+            
+            if result.success and result.fun < best_value:
+                best_result = result
+                best_value = result.fun
+        except Exception as e:
+            continue
+    
+    if best_result is not None and best_result.success:
+        optimal_weights = np.maximum(best_result.x, 0)  # Ensure non-negative
+        optimal_weights = optimal_weights / (optimal_weights.sum() + 1e-10)  # Normalize
+        
+        # Check if weights are meaningful (not all equal)
+        if np.std(optimal_weights) < 0.01:
+            # Weights are too similar, use performance-based instead
+            return compute_performance_based_weights(base_models, X_val, y_val, uses_delta)
+        
         return optimal_weights
     else:
         # Fallback to performance-based weights
-        print(f"  Warning: Optimization failed, using performance-based weights")
         return compute_performance_based_weights(base_models, X_val, y_val, uses_delta)
 
 
