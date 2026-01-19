@@ -36,12 +36,61 @@ This framework implements five distinct models, each chosen for specific strengt
 - **Memory Capacity**: Large reservoir (400-800 units) provides high memory capacity for temporal patterns
 - **Echo State Property**: Controlled spectral radius (0.85-0.95) ensures bounded, stable states
 - **Complementary Approach**: Different architecture from gradient-based models, providing diversity in ensemble
+- **No Gradient Vanishing**: Unlike RNNs, ESN doesn't suffer from vanishing gradients since reservoir weights are fixed
+
+**How ESN Works:**
+
+1. **Reservoir Initialization**:
+   - Random sparse weight matrix W_res (reservoir-to-reservoir connections)
+   - Spectral radius normalization: W_res is scaled so its largest eigenvalue is in range [0.85, 0.95]
+   - This ensures "echo state property" - inputs fade away over time, preventing unbounded growth
+   - Sparse connectivity (density 0.1) means only 10% of connections are non-zero, improving efficiency
+
+2. **Input Processing**:
+   - Input weight matrix W_in maps input features to reservoir
+   - Inputs are fed into the reservoir at each timestep
+   - Sequence length of 64 timesteps provides temporal context
+
+3. **Reservoir Dynamics**:
+   - Reservoir state x[t] evolves according to:
+     ```
+     x[t] = (1 - α) * x[t-1] + α * tanh(W_in * u[t] + W_res * x[t-1])
+     ```
+   - Leak rate α (0.3-1.0) controls how quickly reservoir forgets past states
+   - Lower leak rate (0.3) = longer memory, higher leak rate (1.0) = faster adaptation
+   - tanh activation ensures bounded states
+
+4. **Washout Period**:
+   - First 100 timesteps are discarded to allow reservoir to reach steady state
+   - Prevents transient dynamics from affecting predictions
+   - Only states after washout are used for training
+
+5. **Output Layer**:
+   - Ridge regression maps reservoir states to predictions
+   - Only this layer is trained (fast!)
+   - Ridge alpha (0.3-3.0) controls regularization strength
+   - Higher alpha prevents overfitting on reservoir states
 
 **Implementation Details:**
-- Sparse reservoir connectivity (density 0.1) for efficiency
-- Leaky integrator (leak_rate 0.3-1.0) for temporal memory
-- Washout period (100 timesteps) to discard transient states
-- Ridge regression on reservoir states for output mapping
+- **Reservoir Size**: 400-800 units (larger = more memory, slower computation)
+- **Spectral Radius**: 0.85-0.95 (controls echo state property, stability)
+- **Leak Rate**: 0.3-1.0 (temporal memory vs adaptation speed trade-off)
+- **Density**: 0.1 (10% connectivity for efficiency)
+- **Washout**: 100 timesteps (discard transient states)
+- **Ridge Alpha**: 0.3-3.0 (regularization for output layer)
+- **State Clipping**: None (no clipping, rely on spectral radius for stability)
+
+**Advantages:**
+- **Speed**: Trains in seconds vs minutes for deep networks
+- **Stability**: Echo state property ensures bounded, stable dynamics
+- **Memory**: Large reservoir captures long-term dependencies
+- **Simplicity**: No backpropagation, no gradient issues
+- **Diversity**: Different from gradient-based models, adds ensemble diversity
+
+**Trade-offs:**
+- Reservoir is random (not learned), so performance depends on initialization
+- Less flexible than learned recurrent networks
+- Requires careful tuning of spectral radius and leak rate
 
 ### 3. LSTM (Long Short-Term Memory)
 
