@@ -5,10 +5,12 @@ A modern web interface for visualizing stock data, news, and AI predictions.
 ## Features
 
 - 📈 **Interactive Stock Charts**: View historical price data with Chart.js
-- 📰 **Real-time News Feed**: Display recent news with sentiment analysis
+- 📰 **Real-time News Feed**: Display recent news with sentiment analysis (RAG-enhanced)
 - 🤖 **AI Predictions**: Show model predictions with confidence scores
 - 🎨 **Modern UI**: Clean, responsive design with Bootstrap
 - 🔄 **Real-time Updates**: Dynamic data loading via REST API
+- 💹 **Live Stock Data**: Real-time data from yfinance (Yahoo Finance API)
+- 🔐 **Environment Variables**: Secure configuration via .env file
 
 ## Quick Start
 
@@ -39,6 +41,11 @@ Visit: http://localhost:5000
 ### GET `/api/stock/<symbol>`
 Get historical stock data for a symbol (e.g., AAPL, GOOGL)
 
+**Data Sources (in order of priority):**
+1. **yfinance API**: Real-time data from Yahoo Finance (default)
+2. **Local CSV files**: Falls back to `data/raw/` if yfinance unavailable
+3. **Demo data**: Generated if no other source available
+
 **Response:**
 ```json
 {
@@ -48,7 +55,9 @@ Get historical stock data for a symbol (e.g., AAPL, GOOGL)
     "prices": [150.25, 152.10, ...],
     "volumes": [1000000, 1200000, ...],
     "returns": [0.0, 0.012, ...]
-  }
+  },
+  "mode": "yfinance",
+  "symbol": "AAPL"
 }
 ```
 

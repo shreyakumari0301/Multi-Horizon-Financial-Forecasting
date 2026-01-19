@@ -9,6 +9,10 @@ from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS
 from datetime import datetime, timedelta
 import json
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Optional imports - app works without these
 try:
@@ -69,53 +73,59 @@ def index():
 
 @app.route('/api/stock/<symbol>')
 def get_stock_data(symbol):
-    """Get stock data for a symbol"""
+    """Get stock data for a symbol using yfinance"""
     try:
-        if not HAS_PANDAS:
-            # Return demo data if pandas not available
-            import random
-            dates = [(datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(365, 0, -1)]
-            base_price = 150.0
-            prices = [base_price + random.uniform(-5, 5) + i * 0.1 for i in range(365)]
-            returns = [0.0] + [(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, len(prices))]
+        # Try to use yfinance for real-time data
+        try:
+            from src.data.yfinance_fetcher import get_fetcher
             
-            data = {
-                'dates': dates,
-                'prices': prices,
-                'volumes': [random.randint(1000000, 5000000) for _ in range(365)],
-                'returns': returns
-            }
-            return jsonify({'success': True, 'data': data, 'mode': 'demo'})
+            fetcher = get_fetcher()
+            df = fetcher.get_historical_data(symbol, days=365)
+            
+            if not df.empty:
+                # Prepare data for frontend
+                data = {
+                    'dates': df.index.strftime('%Y-%m-%d').tolist(),
+                    'prices': df['close'].tolist(),
+                    'volumes': df['volume'].tolist() if 'volume' in df.columns else [],
+                    'returns': df['close'].pct_change().fillna(0).tolist()
+                }
+                return jsonify({'success': True, 'data': data, 'mode': 'yfinance', 'symbol': symbol})
+        except ImportError:
+            print("⚠ yfinance not available, trying local files...")
+        except Exception as e:
+            print(f"⚠ yfinance error: {e}, trying local files...")
         
-        # Load stock data (you might want to fetch this from an API)
-        stock_file = f"data/raw/{symbol}_2005-12-19_to_2026-01-13_1d.csv"
-        if os.path.exists(stock_file):
-            df = pd.read_csv(stock_file, index_col=0, parse_dates=True)
-            df = df.tail(365)  # Last year of data
+        # Fallback to local files if yfinance fails
+        if HAS_PANDAS:
+            stock_file = f"data/raw/{symbol}_2005-12-19_to_2026-01-13_1d.csv"
+            if os.path.exists(stock_file):
+                df = pd.read_csv(stock_file, index_col=0, parse_dates=True)
+                df = df.tail(365)  # Last year of data
 
-            # Prepare data for frontend
-            data = {
-                'dates': df.index.strftime('%Y-%m-%d').tolist(),
-                'prices': df['Close'].tolist(),
-                'volumes': df['Volume'].tolist() if 'Volume' in df.columns else [],
-                'returns': df['Close'].pct_change().fillna(0).tolist()
-            }
-            return jsonify({'success': True, 'data': data, 'mode': 'real'})
-        else:
-            # Return demo data if file not found
-            import random
-            dates = [(datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(365, 0, -1)]
-            base_price = 150.0
-            prices = [base_price + random.uniform(-5, 5) + i * 0.1 for i in range(365)]
-            returns = [0.0] + [(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, len(prices))]
-            
-            data = {
-                'dates': dates,
-                'prices': prices,
-                'volumes': [random.randint(1000000, 5000000) for _ in range(365)],
-                'returns': returns
-            }
-            return jsonify({'success': True, 'data': data, 'mode': 'demo'})
+                # Prepare data for frontend
+                data = {
+                    'dates': df.index.strftime('%Y-%m-%d').tolist(),
+                    'prices': df['Close'].tolist(),
+                    'volumes': df['Volume'].tolist() if 'Volume' in df.columns else [],
+                    'returns': df['Close'].pct_change().fillna(0).tolist()
+                }
+                return jsonify({'success': True, 'data': data, 'mode': 'local', 'symbol': symbol})
+        
+        # Final fallback: demo data
+        import random
+        dates = [(datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(365, 0, -1)]
+        base_price = 150.0
+        prices = [base_price + random.uniform(-5, 5) + i * 0.1 for i in range(365)]
+        returns = [0.0] + [(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, len(prices))]
+        
+        data = {
+            'dates': dates,
+            'prices': prices,
+            'volumes': [random.randint(1000000, 5000000) for _ in range(365)],
+            'returns': returns
+        }
+        return jsonify({'success': True, 'data': data, 'mode': 'demo', 'symbol': symbol})
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -177,12 +187,21 @@ def get_news_data(symbol):
 def get_prediction(symbol):
     """Get prediction for a symbol"""
     try:
+        # Get current price from yfinance
+        current_price = None
+        try:
+            from src.data.yfinance_fetcher import get_fetcher
+            fetcher = get_fetcher()
+            current_price = fetcher.get_current_price(symbol)
+        except:
+            pass
+        
         if predictor is None:
             # Return demo prediction if predictor not available
             import random
             direction = random.choice(['LONG', 'SHORT'])
             confidence = round(random.uniform(0.55, 0.85), 2)
-            price = round(random.uniform(100, 200), 2)
+            price = current_price if current_price else round(random.uniform(100, 200), 2)
             change_pct = round(random.uniform(-2.0, 2.0), 2)
             prediction_price = round(price * (1 + change_pct / 100), 2)
             
@@ -197,12 +216,12 @@ def get_prediction(symbol):
             }
             return jsonify({'success': True, 'prediction': prediction})
 
-        # TODO: Implement real prediction using predictor
-        # For now, return demo prediction
+        # TODO: Implement real prediction using predictor with real-time data
+        # For now, return demo prediction with real price
         import random
         direction = random.choice(['LONG', 'SHORT'])
         confidence = round(random.uniform(0.60, 0.80), 2)
-        price = round(random.uniform(100, 200), 2)
+        price = current_price if current_price else round(random.uniform(100, 200), 2)
         change_pct = round(random.uniform(-2.0, 2.0), 2)
         prediction_price = round(price * (1 + change_pct / 100), 2)
         
