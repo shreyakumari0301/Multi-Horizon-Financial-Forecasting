@@ -189,7 +189,8 @@
             await Promise.all([
                 loadStockData(),
                 loadNewsData(),
-                loadPrediction()
+                loadPrediction(),
+                loadModelResults()
             ]);
         }
 
