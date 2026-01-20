@@ -33,7 +33,7 @@
             max-height: 250px !important;
         }
         .prediction-card {
-            background: #f1f3f5;
+            background: white;
             color: #0b0c0d;
         }
         .metric-chip {
@@ -252,39 +252,37 @@
                         const score = pred.score !== undefined ? pred.score : pred.confidence;
 
                     container.innerHTML = `
-                        <div class="row text-center">
-                            <div class="col-6">
-                                <h6>Direction</h6>
-                                <h3 class="${pred.direction === 'LONG' ? 'text-success' : 'text-danger'}">
+                        <div class="row text-center g-3">
+                            <div class="col-3">
+                                <small class="text-muted d-block mb-1">Direction</small>
+                                <h4 class="${pred.direction === 'LONG' ? 'text-success' : 'text-danger'} mb-0">
                                     ${pred.direction} ${arrow}
-                                </h3>
+                                </h4>
                             </div>
-                            <div class="col-6">
-                                <h6>Confidence</h6>
-                                <h3>${(pred.confidence * 100).toFixed(1)}%</h3>
+                            <div class="col-3">
+                                <small class="text-muted d-block mb-1">Confidence</small>
+                                <h4 class="mb-0">${(pred.confidence * 100).toFixed(1)}%</h4>
                             </div>
-                        </div>
-                        <hr>
-                        <div class="row text-center">
-                            <div class="col-6">
-                                <small>Current Price</small>
-                                <h5>$${pred.price.toFixed(2)}</h5>
+                            <div class="col-3">
+                                <small class="text-muted d-block mb-1">Current Price</small>
+                                <h4 class="mb-0">$${pred.price.toFixed(2)}</h4>
                             </div>
-                            <div class="col-6">
-                                <small>Predicted</small>
-                                <h5 class="${changeColor}">$${pred.prediction.toFixed(2)}</h5>
+                            <div class="col-3">
+                                <small class="text-muted d-block mb-1">Predicted</small>
+                                <h4 class="${changeColor} mb-0">$${pred.prediction.toFixed(2)}</h4>
                             </div>
                         </div>
-                            <div class="row text-center mt-3">
-                                <div class="col-12">
-                                    <small>Predicted Score</small>
-                                    <h5>${(score * 100).toFixed(1)}%</h5>
-                                </div>
+                        <div class="row text-center mt-3">
+                            <div class="col-6">
+                                <small class="text-muted d-block mb-1">Predicted Score</small>
+                                <h5 class="mb-0">${(score * 100).toFixed(1)}%</h5>
                             </div>
-                        <div class="text-center mt-3">
-                            <span class="badge ${changeColor} fs-6">
-                                ${pred.change_pct >= 0 ? '+' : ''}${pred.change_pct.toFixed(2)}%
-                            </span>
+                            <div class="col-6">
+                                <small class="text-muted d-block mb-1">Change</small>
+                                <span class="badge ${changeColor} fs-6">
+                                    ${pred.change_pct >= 0 ? '+' : ''}${pred.change_pct.toFixed(2)}%
+                                </span>
+                            </div>
                         </div>
                     `;
                 } else {
@@ -356,63 +354,63 @@
                     const res = result.results;
                     
                     container.innerHTML = `
-                        <div class="row g-2">
-                            <div class="col-12">
-                                <div class="border rounded p-3 mb-2">
-                                    <div class="d-flex justify-content-between align-items-center mb-2">
-                                        <small class="text-muted">H1 (1-day)</small>
-                                        <span class="badge bg-primary">${(res.h1.probability * 100).toFixed(1)}%</span>
+                        <div class="row g-3">
+                            <div class="col-4">
+                                <div class="border rounded p-3 h-100">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <span class="fw-bold" style="font-size: 1rem;">H1 (1-day)</span>
+                                        <span class="badge bg-primary" style="font-size: 0.9rem;">${(res.h1.probability * 100).toFixed(1)}%</span>
                                     </div>
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <small class="text-muted d-block">Expected Price</small>
-                                            <strong class="h6 mb-0">$${res.h1.expected_price.toFixed(2)}</strong>
+                                    <div class="text-center">
+                                        <div class="mb-3">
+                                            <small class="text-muted d-block mb-1" style="font-size: 0.85rem;">Expected Price</small>
+                                            <strong class="d-block" style="font-size: 1.3rem;">$${res.h1.expected_price.toFixed(2)}</strong>
                                         </div>
-                                        <div class="text-end">
-                                            <small class="text-muted d-block">Dir. Accuracy</small>
-                                            <strong class="h6 mb-0">${res.h1.dir_acc.toFixed(3)}</strong>
+                                        <div>
+                                            <small class="text-muted d-block mb-1" style="font-size: 0.85rem;">Dir. Accuracy</small>
+                                            <strong class="d-block" style="font-size: 1.2rem;">${res.h1.dir_acc.toFixed(3)}</strong>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-12">
-                                <div class="border rounded p-3 mb-2">
-                                    <div class="d-flex justify-content-between align-items-center mb-2">
-                                        <small class="text-muted">H5 (5-day)</small>
-                                        <span class="badge bg-success">${(res.h5.probability * 100).toFixed(1)}%</span>
+                            <div class="col-4">
+                                <div class="border rounded p-3 h-100">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <span class="fw-bold" style="font-size: 1rem;">H5 (5-day)</span>
+                                        <span class="badge bg-success" style="font-size: 0.9rem;">${(res.h5.probability * 100).toFixed(1)}%</span>
                                     </div>
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <small class="text-muted d-block">Expected Price</small>
-                                            <strong class="h6 mb-0">$${res.h5.expected_price.toFixed(2)}</strong>
+                                    <div class="text-center">
+                                        <div class="mb-3">
+                                            <small class="text-muted d-block mb-1" style="font-size: 0.85rem;">Expected Price</small>
+                                            <strong class="d-block" style="font-size: 1.3rem;">$${res.h5.expected_price.toFixed(2)}</strong>
                                         </div>
-                                        <div class="text-end">
-                                            <small class="text-muted d-block">Dir. Accuracy</small>
-                                            <strong class="h6 mb-0">${res.h5.dir_acc.toFixed(3)}</strong>
+                                        <div>
+                                            <small class="text-muted d-block mb-1" style="font-size: 0.85rem;">Dir. Accuracy</small>
+                                            <strong class="d-block" style="font-size: 1.2rem;">${res.h5.dir_acc.toFixed(3)}</strong>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-12">
-                                <div class="border rounded p-3 mb-2">
-                                    <div class="d-flex justify-content-between align-items-center mb-2">
-                                        <small class="text-muted">H20 (20-day)</small>
-                                        <span class="badge bg-info">${(res.h20.probability * 100).toFixed(1)}%</span>
+                            <div class="col-4">
+                                <div class="border rounded p-3 h-100">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <span class="fw-bold" style="font-size: 1rem;">H20 (20-day)</span>
+                                        <span class="badge bg-info" style="font-size: 0.9rem;">${(res.h20.probability * 100).toFixed(1)}%</span>
                                     </div>
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <small class="text-muted d-block">Expected Price</small>
-                                            <strong class="h6 mb-0">$${res.h20.expected_price.toFixed(2)}</strong>
+                                    <div class="text-center">
+                                        <div class="mb-3">
+                                            <small class="text-muted d-block mb-1" style="font-size: 0.85rem;">Expected Price</small>
+                                            <strong class="d-block" style="font-size: 1.3rem;">$${res.h20.expected_price.toFixed(2)}</strong>
                                         </div>
-                                        <div class="text-end">
-                                            <small class="text-muted d-block">Dir. Accuracy</small>
-                                            <strong class="h6 mb-0">${res.h20.dir_acc.toFixed(3)}</strong>
+                                        <div>
+                                            <small class="text-muted d-block mb-1" style="font-size: 0.85rem;">Dir. Accuracy</small>
+                                            <strong class="d-block" style="font-size: 1.2rem;">${res.h20.dir_acc.toFixed(3)}</strong>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        <small class="text-muted d-block text-center mt-2">
+                        <small class="text-muted d-block text-center mt-3" style="font-size: 0.9rem;">
                             Hybrid Ensemble (mean across 9 folds) | Current: $${res.current_price.toFixed(2)}
                         </small>
                     `;
