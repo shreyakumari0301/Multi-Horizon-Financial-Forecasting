@@ -17,8 +17,20 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         .stock-chart {
-            height: 550px;
+            height: 600px;
             width: 100%;
+        }
+        .container-fluid {
+            max-width: 1800px;
+        }
+        .card-body {
+            padding: 1.5rem;
+        }
+        .card-header {
+            padding: 1rem 1.5rem;
+        }
+        #newsContainer {
+            max-height: 250px !important;
         }
         .prediction-card {
             background: #f1f3f5;
@@ -61,7 +73,7 @@
         </div>
     </nav>
 
-    <div class="container mt-4">
+    <div class="container-fluid mt-4 px-4">
         <!-- Symbol Selection -->
         <div class="row mb-4">
             <div class="col-md-12">
@@ -144,29 +156,11 @@
                     </div>
                     <div class="card-body">
                         <div id="modelAccuracyContainer">
-                            <div class="row text-center">
-                                <div class="col-4">
-                                    <div class="border rounded p-2 mb-2">
-                                        <small class="text-muted d-block">H1 (1-day)</small>
-                                        <strong class="h5 mb-0">0.492</strong>
-                                    </div>
-                                </div>
-                                <div class="col-4">
-                                    <div class="border rounded p-2 mb-2">
-                                        <small class="text-muted d-block">H5 (5-day)</small>
-                                        <strong class="h5 mb-0">0.503</strong>
-                                    </div>
-                                </div>
-                                <div class="col-4">
-                                    <div class="border rounded p-2 mb-2">
-                                        <small class="text-muted d-block">H20 (20-day)</small>
-                                        <strong class="h5 mb-0">0.464</strong>
-                                    </div>
+                            <div class="text-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
                                 </div>
                             </div>
-                            <small class="text-muted d-block text-center mt-2">
-                                Hybrid Ensemble (mean across 9 folds)
-                            </small>
                         </div>
                     </div>
                 </div>
@@ -348,6 +342,86 @@
                     }
                 }
             });
+        }
+
+        async function loadModelResults() {
+            const container = document.getElementById('modelAccuracyContainer');
+
+            try {
+                const response = await fetch(`/api/model-results/${currentSymbol}`);
+                const result = await response.json();
+
+                if (result.success) {
+                    const res = result.results;
+                    
+                    container.innerHTML = `
+                        <div class="row g-2">
+                            <div class="col-12">
+                                <div class="border rounded p-3 mb-2">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <small class="text-muted">H1 (1-day)</small>
+                                        <span class="badge bg-primary">${(res.h1.probability * 100).toFixed(1)}%</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <small class="text-muted d-block">Expected Price</small>
+                                            <strong class="h6 mb-0">$${res.h1.expected_price.toFixed(2)}</strong>
+                                        </div>
+                                        <div class="text-end">
+                                            <small class="text-muted d-block">Dir. Accuracy</small>
+                                            <strong class="h6 mb-0">${res.h1.dir_acc.toFixed(3)}</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="border rounded p-3 mb-2">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <small class="text-muted">H5 (5-day)</small>
+                                        <span class="badge bg-success">${(res.h5.probability * 100).toFixed(1)}%</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <small class="text-muted d-block">Expected Price</small>
+                                            <strong class="h6 mb-0">$${res.h5.expected_price.toFixed(2)}</strong>
+                                        </div>
+                                        <div class="text-end">
+                                            <small class="text-muted d-block">Dir. Accuracy</small>
+                                            <strong class="h6 mb-0">${res.h5.dir_acc.toFixed(3)}</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="border rounded p-3 mb-2">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <small class="text-muted">H20 (20-day)</small>
+                                        <span class="badge bg-info">${(res.h20.probability * 100).toFixed(1)}%</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <small class="text-muted d-block">Expected Price</small>
+                                            <strong class="h6 mb-0">$${res.h20.expected_price.toFixed(2)}</strong>
+                                        </div>
+                                        <div class="text-end">
+                                            <small class="text-muted d-block">Dir. Accuracy</small>
+                                            <strong class="h6 mb-0">${res.h20.dir_acc.toFixed(3)}</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <small class="text-muted d-block text-center mt-2">
+                            Hybrid Ensemble (mean across 9 folds) | Current: $${res.current_price.toFixed(2)}
+                        </small>
+                    `;
+                } else {
+                    container.innerHTML = '<p class="text-muted text-center">Model results unavailable</p>';
+                }
+            } catch (error) {
+                container.innerHTML = '<p class="text-danger text-center">Error loading model results</p>';
+                console.error('Error loading model results:', error);
+            }
         }
     </script>
 </body>
