@@ -83,10 +83,21 @@ def get_stock_data(symbol):
             df = fetcher.get_historical_data(symbol, days=365)
             
             if not df.empty:
+                # Ensure we have 'close' column
+                if 'close' not in df.columns:
+                    raise ValueError(f"Close price column not found. Available: {df.columns.tolist()}")
+                
+                # Convert prices to list, ensuring they're floats
+                prices = [float(p) for p in df['close'].tolist()]
+                
+                # Debug: Print latest price
+                if len(prices) > 0:
+                    print(f"✓ API returning {symbol} - Latest price: ${prices[-1]:.2f} on {df.index[-1].strftime('%Y-%m-%d')}")
+                
                 # Prepare data for frontend
                 data = {
                     'dates': df.index.strftime('%Y-%m-%d').tolist(),
-                    'prices': df['close'].tolist(),
+                    'prices': prices,
                     'volumes': df['volume'].tolist() if 'volume' in df.columns else [],
                     'returns': df['close'].pct_change().fillna(0).tolist()
                 }

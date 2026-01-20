@@ -68,8 +68,39 @@ class YFinanceFetcher:
             if df.empty:
                 raise ValueError(f"No data returned for symbol {symbol}")
             
-            # Standardize column names
+            # Standardize column names - preserve original column mapping
+            original_cols = df.columns.tolist()
             df.columns = [col.lower().replace(' ', '_') for col in df.columns]
+            
+            # Explicitly use 'Close' price (not 'Adj Close')
+            # yfinance returns 'Close' and 'Adj Close' - we want 'Close' for actual prices
+            if 'close' in df.columns:
+                # Ensure we're using Close, not Adj Close
+                # If both exist, explicitly use 'close' (which came from 'Close')
+                if 'adj_close' in df.columns:
+                    # Keep 'close' as is (it's from 'Close'), don't use 'adj_close'
+                    pass
+            else:
+                # Try to find Close column with different casing
+                close_col = None
+                for orig_col, new_col in zip(original_cols, df.columns):
+                    if 'close' in new_col.lower() and 'adj' not in new_col.lower():
+                        close_col = orig_col
+                        break
+                
+                if close_col:
+                    df['close'] = df[close_col]
+                elif 'adj_close' in df.columns:
+                    print(f"⚠ Warning: Using Adj Close for {symbol} (Close not available)")
+                    df['close'] = df['adj_close']
+                else:
+                    raise ValueError(f"Close price column not found for {symbol}. Available columns: {df.columns.tolist()}")
+            
+            # Debug: Print latest price for verification
+            if not df.empty:
+                latest_date = df.index[-1]
+                latest_close = df['close'].iloc[-1]
+                print(f"✓ {symbol} - Latest: {latest_date.strftime('%Y-%m-%d')} - Close: ${latest_close:.2f}")
             
             # Ensure we have required columns
             required_cols = ['open', 'high', 'low', 'close', 'volume']
