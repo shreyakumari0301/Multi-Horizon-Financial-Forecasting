@@ -17,7 +17,7 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         .stock-chart {
-            height: 500px;
+            height: 550px;
             width: 100%;
         }
         .prediction-card {
@@ -87,7 +87,7 @@
         <!-- Main Content: Split Screen Layout -->
         <div class="row">
             <!-- Left Side: Stock Chart -->
-            <div class="col-md-6 mb-4">
+            <div class="col-lg-7 col-md-12 mb-4">
                 <div class="card">
                     <div class="card-header">
                         <h5 class="mb-0">Stock Price Chart</h5>
@@ -99,7 +99,7 @@
             </div>
 
             <!-- Right Side: News, Prediction, Model Accuracy -->
-            <div class="col-md-6 mb-4">
+            <div class="col-lg-5 col-md-12 mb-4">
                 <!-- Recent News -->
                 <div class="card mb-3">
                     <div class="card-header">
@@ -254,6 +254,7 @@
                     const pred = result.prediction;
                     const changeColor = pred.change_pct >= 0 ? 'text-success' : 'text-danger';
                     const arrow = pred.change_pct >= 0 ? '↑' : '↓';
+                        const score = pred.score !== undefined ? pred.score : pred.confidence;
 
                     container.innerHTML = `
                         <div class="row text-center">
@@ -279,6 +280,12 @@
                                 <h5 class="${changeColor}">$${pred.prediction.toFixed(2)}</h5>
                             </div>
                         </div>
+                            <div class="row text-center mt-3">
+                                <div class="col-12">
+                                    <small>Predicted Score</small>
+                                    <h5>${(score * 100).toFixed(1)}%</h5>
+                                </div>
+                            </div>
                         <div class="text-center mt-3">
                             <span class="badge ${changeColor} fs-6">
                                 ${pred.change_pct >= 0 ? '+' : ''}${pred.change_pct.toFixed(2)}%
