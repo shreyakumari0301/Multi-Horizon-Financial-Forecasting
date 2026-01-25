@@ -209,9 +209,10 @@ class TransformerRegressor:
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         self._require_fitted()
+        self._model.eval()  # Ensure eval mode for faster inference
         X = np.asarray(X, dtype=np.float32)
         X_seq, _ = self._seq.build(X, None)  # (N, L, F)
-        with torch.no_grad():
+        with torch.inference_mode():  # Faster than no_grad
             y_hat = self._model(torch.from_numpy(X_seq).to(self.device)).cpu().numpy()
         return y_hat.ravel() if self.out_dim_ == 1 else y_hat
 

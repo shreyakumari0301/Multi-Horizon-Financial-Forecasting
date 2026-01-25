@@ -43,6 +43,7 @@ venv.bak/
 *.ipynb_checkpoints/
 
 RESEARCH_CONTRIBUTION.md
+INFERENCE_OPTIMIZATIONS.md
 
 # Data files (uncomment if you don't want to track data)
 # data/raw/

@@ -354,16 +354,32 @@ class MSTFCARegressor:
         if best_state is not None:
             model.load_state_dict(best_state)
 
+        # Optimize model for inference
+        model.eval()
+        # Use torch.compile for faster inference (PyTorch 2.0+)
+        try:
+            if hasattr(torch, 'compile'):
+                model = torch.compile(model, mode='reduce-overhead')
+                print("  Model compiled for faster inference")
+        except Exception:
+            pass  # Fallback if compilation fails
+        
         self._model = model
         self._fitted = True
         return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         self._require_fitted()
+        self._model.eval()  # Ensure eval mode
+        
         X = np.asarray(X, dtype=np.float32)
         X_seq, _ = self._seq.build(X, None)  # (N, L, F)
-        with torch.no_grad():
-            y_hat = self._model(torch.from_numpy(X_seq).to(self.device)).cpu().numpy()
+        
+        # Use inference_mode for faster inference (slightly faster than no_grad)
+        with torch.inference_mode():
+            X_tensor = torch.from_numpy(X_seq).to(self.device)
+            y_hat = self._model(X_tensor).cpu().numpy()
+        
         return y_hat.ravel() if self.out_dim_ == 1 else y_hat
 
     def _require_fitted(self):

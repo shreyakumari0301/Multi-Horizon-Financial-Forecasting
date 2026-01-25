@@ -212,11 +212,12 @@ def run_grid_search(
         for horizon in horizons:
             print(f"\n=== {model_name.upper()} | Fold {fold} | {horizon} ===")
             
-            # Create model with grid parameters
+            # Create model with grid parameters (pass horizon for horizon-specific configs)
             model = create_model_fn(
                 model_name,
                 grid=grid,
                 grid_index=grid_index,
+                horizon=horizon,
                 **override_kwargs
             )
             

@@ -31,21 +31,30 @@ def create_model(
     model_name: str,
     grid: Dict[str, list],
     grid_index: int = 0,
+    horizon: str = None,
     **override_kwargs
 ):
     """
     Create a model instance from hyperparameter grid.
     
     Args:
-        model_name: Name of the model ("lstm", "transformer", "tcn", "ridge")
+        model_name: Name of the model
         grid: Hyperparameter grid dictionary
         grid_index: Index to use when extracting from grid (default: 0)
+        horizon: Target horizon (for horizon-specific configs)
         **override_kwargs: Additional parameters to override
     
     Returns:
         Model instance
     """
     params = get_grid_params(grid, grid_index)
+    
+    # Apply horizon-specific configurations if available
+    if horizon and hasattr(experiments, 'HORIZON_SPECIFIC_CONFIG'):
+        horizon_config = experiments.HORIZON_SPECIFIC_CONFIG.get(horizon, {})
+        if model_name in horizon_config:
+            params.update(horizon_config[model_name])
+    
     params.update(override_kwargs)
     return get_model(model_name, **params)
 
@@ -210,6 +219,7 @@ def main():
             "lstm": experiments.LSTM_GRID,
             "transformer": experiments.TRANSFORMER_GRID,
             "tcn": experiments.TCN_GRID,
+            "mstf_ca": experiments.MSTF_CA_GRID,
         }
         
         grid = grid_map.get(model_name)

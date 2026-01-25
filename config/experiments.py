@@ -13,8 +13,8 @@ ESN_GRID = {
 }
 
 LSTM_GRID = {
-    "seq_len":        [64],          # Longer sequences for better context
-    "hidden":         [256],         # Larger capacity
+    "seq_len":        [32],          # Reduced from 64 for faster inference
+    "hidden":         [128],         # Reduced from 256 for speed
     "layers":         [2],           # Deeper network
     "dropout":        [0.0],         # No dropout (reduces over-smoothing)
     "epochs":         [40],          # More training for better accuracy
@@ -27,11 +27,11 @@ LSTM_GRID = {
 }
 
 TRANSFORMER_GRID = {
-    "seq_len":        [128],         # Longer lookback for patterns
-    "d_model":        [256],         # Larger model dimension
-    "nhead":          [8],           # More attention heads
-    "num_layers":     [3],           # Deeper network
-    "dim_feedforward":[512],         # Larger feedforward
+    "seq_len":        [64],          # Reduced from 128 for faster inference
+    "d_model":        [128],         # Reduced from 256 for speed
+    "nhead":          [4],           # Reduced from 8 for speed
+    "num_layers":     [2],           # Reduced from 3 for speed
+    "dim_feedforward":[256],         # Reduced from 512 for speed
     "dropout":        [0.1],         # Moderate dropout
     "epochs":         [40],          # More training
     "batch_size":     [128],         # Good batch size
@@ -43,8 +43,8 @@ TRANSFORMER_GRID = {
 }
 
 TCN_GRID = {
-    "seq_len":        [64],          # Good sequence length
-    "channels":       [(128, 256)],   # Larger channels for capacity
+    "seq_len":        [32],          # Reduced from 64 for faster inference
+    "channels":       [(64, 128)],   # Reduced from (128, 256) for speed
     "kernel_size":    [3],
     "dropout":        [0.0],         # No dropout (reduces over-smoothing)
     "epochs":         [40],          # More training
@@ -83,13 +83,14 @@ LSTM_GRU_XGBOOST_GRID = {
 
 # Novel Multi-Scale Temporal Fusion Network with Cross-Attention (MSTF-CA)
 # Research contribution: Combines LSTM, GRU, TCN, Transformer with cross-attention fusion
+# Optimized for fast inference while maintaining accuracy
 MSTF_CA_GRID = {
-    "seq_len":              [128],         # Longer sequences for multi-scale patterns
-    "hidden":               [128],         # LSTM/GRU hidden size
-    "d_model":              [256],         # Transformer dimension
-    "nhead":                [8],           # Attention heads
-    "num_transformer_layers": [3],        # Transformer depth
-    "tcn_channels":         [(64, 128)],   # TCN channel progression
+    "seq_len":              [64],          # Reduced from 128 for faster inference
+    "hidden":               [96],          # Reduced from 128 for speed
+    "d_model":              [128],         # Reduced from 256 for speed
+    "nhead":                [4],           # Reduced from 8 for speed
+    "num_transformer_layers": [2],        # Reduced from 3 for speed
+    "tcn_channels":         [(32, 64)],    # Reduced channels for speed
     "dropout":              [0.1],         # Moderate dropout
     "epochs":               [50],          # More training for complex model
     "batch_size":           [128],         # Good batch size
@@ -102,24 +103,28 @@ MSTF_CA_GRID = {
 }
 
 # Horizon-specific configurations (override defaults for speed/accuracy balance)
+# Optimized for fast inference
 HORIZON_SPECIFIC_CONFIG = {
     "target_h1": {
         # For h1, we can train longer for better accuracy
         "lstm": {"epochs": 50},
         "transformer": {"epochs": 50},
         "tcn": {"epochs": 50},
+        "mstf_ca": {"epochs": 50, "seq_len": 64},  # Reduced seq_len for speed
     },
     "target_h5": {
         # For h5, balance speed and accuracy
         "lstm": {"epochs": 35, "batch_size": 256},
         "transformer": {"epochs": 35, "batch_size": 256},
         "tcn": {"epochs": 35, "batch_size": 256},
+        "mstf_ca": {"epochs": 40, "batch_size": 128, "seq_len": 64},
     },
     "target_h20": {
         # For h20, prioritize speed
         "lstm": {"epochs": 30, "batch_size": 256},
         "transformer": {"epochs": 30, "batch_size": 256},
         "tcn": {"epochs": 30, "batch_size": 256},
+        "mstf_ca": {"epochs": 35, "batch_size": 128, "seq_len": 64},
     },
 }
 
