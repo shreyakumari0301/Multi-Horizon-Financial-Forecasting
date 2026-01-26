@@ -98,20 +98,36 @@ def fetch_news_for_symbol(symbol: str, days_back: int = 365, max_retries: int = 
             news_list = []
             cutoff_date = datetime.now() - timedelta(days=days_back)
             
+            # Debug: Print first item structure if no valid headlines found
+            debug_printed = False
+            
             for item in news:
                 # yfinance news format changed - now has nested 'content' structure
                 # Structure: {'id': '...', 'content': {'title': '...', 'providerPublishTime': ...}}
                 content = item.get('content', {})
                 
-                # Get title from nested content
-                title = (content.get('title') or 
-                        item.get('title') or 
-                        content.get('headline') or 
-                        item.get('headline') or 
-                        content.get('linkTitle') or 
-                        item.get('linkTitle') or 
-                        content.get('summary') or 
-                        item.get('summary') or '')
+                # Get title from nested content - check all possible locations
+                title = None
+                if isinstance(content, dict):
+                    title = (content.get('title') or 
+                            content.get('headline') or 
+                            content.get('linkTitle') or 
+                            content.get('summary'))
+                
+                if not title:
+                    title = (item.get('title') or 
+                            item.get('headline') or 
+                            item.get('linkTitle') or 
+                            item.get('summary'))
+                
+                # Debug first item if title is missing
+                if not title and not debug_printed and len(news) > 0:
+                    print(f"  Debug: First news item structure:")
+                    print(f"    Top-level keys: {list(item.keys())}")
+                    if 'content' in item:
+                        print(f"    Content keys: {list(item['content'].keys()) if isinstance(item['content'], dict) else 'Not a dict'}")
+                        print(f"    Content sample: {str(item['content'])[:200]}")
+                    debug_printed = True
                 
                 # Skip if no title found
                 if not title or (isinstance(title, str) and len(title.strip()) == 0):
@@ -266,7 +282,15 @@ def fetch_all_news(
     combined['date'] = combined['date'].dt.strftime('%Y-%m-%d')
     
     # Keep only date and headline for training
+    # Make sure we have valid headlines
     output_df = combined[['date', 'headline']].copy()
+    output_df = output_df[output_df['headline'].astype(str).str.strip() != '']
+    
+    if len(output_df) == 0:
+        print("\n⚠ WARNING: No valid headlines to save!")
+        print("  All headlines were empty or filtered out.")
+        print("  The CSV file will be empty.")
+        return pd.DataFrame(columns=['date', 'headline'])
     
     # Save to CSV
     os.makedirs(os.path.dirname(output_path), exist_ok=True)

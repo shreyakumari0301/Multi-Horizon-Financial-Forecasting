@@ -41,10 +41,25 @@ def load_headlines(csv_path: str) -> pd.DataFrame:
     else:
         raise ValueError(f"CSV must have either ('date', 'headline') or ('published_utc', 'title') columns")
     
+    # Debug: Show what columns we have
+    print(f"  CSV columns: {list(df.columns)}")
+    print(f"  Total rows: {len(df)}")
+    
     df = df[["date", "headline"]].dropna(subset=["headline"])
+    print(f"  After dropna: {len(df)} rows")
+    
     # Convert headline to string and remove empty headlines
     df["headline"] = df["headline"].astype(str)
     df = df[df["headline"].str.strip() != ""]  # Remove empty headlines
+    print(f"  After removing empty: {len(df)} rows")
+    
+    if len(df) == 0:
+        raise ValueError(
+            f"No valid headlines found in {csv_path}.\n"
+            f"  - Check that the CSV has 'date' and 'headline' columns\n"
+            f"  - Check that headlines are not empty\n"
+            f"  - Try fetching news again: python scripts/data/fetch_news.py"
+        )
     
     print(f"Loaded {len(df)} headlines from {df['date'].min().date()} to {df['date'].max().date()}")
     return df
@@ -148,7 +163,8 @@ def process_news_data(
     small_pca_dim: int = 12,
     large_pca_dim: int = 14,
     random_state: int = 42,
-    agg_method: str = "mean"
+    agg_method: str = "mean",
+    use_finbert: bool = False
 ) -> pd.DataFrame:
     """
     Process news headlines using sentence-transformers dual model approach.
@@ -166,6 +182,44 @@ def process_news_data(
     Returns:
         DataFrame with processed features (26 PCA + 2 has_news = 28 total)
     """
+    if use_finbert:
+        # Use FinBERT approach (original)
+        print("=" * 70)
+        print("Processing News Headlines with FinBERT")
+        print("=" * 70)
+        
+        from src.features.finbert_embeddings import generate_news_embeddings
+        from src.features.pca_reduction import reduce_embeddings
+        
+        # Load headlines
+        headlines_df = load_headlines(news_path)
+        
+        # Generate FinBERT embeddings
+        print("\nGenerating FinBERT embeddings...")
+        embeddings_df = generate_news_embeddings(
+            headlines_df,
+            headline_col="headline",
+            date_col="date",
+            model_name="ProsusAI/finbert"
+        )
+        
+        # Reduce with PCA
+        print("\nReducing to 28 features with PCA...")
+        reduced_df = reduce_embeddings(
+            embeddings_df,
+            n_components=28,
+            train_dates=None
+        )
+        
+        # Save
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, "news_features_28d.csv")
+        reduced_df.to_csv(output_path)
+        
+        print(f"\n✓ Saved {len(reduced_df.columns)} FinBERT features to {output_path}")
+        return reduced_df
+    
+    # Use sentence-transformers approach (dual model)
     print("=" * 70)
     print("Processing News Headlines with Sentence-Transformers (Dual Model)")
     print("=" * 70)
@@ -255,6 +309,11 @@ def main():
         default=14,
         help="PCA dimensions for large model (default: 14)"
     )
+    parser.add_argument(
+        "--use_finbert",
+        action="store_true",
+        help="Use FinBERT instead of sentence-transformers (default: sentence-transformers)"
+    )
     
     args = parser.parse_args()
     
@@ -264,7 +323,8 @@ def main():
         small_model=args.small_model,
         large_model=args.large_model,
         small_pca_dim=args.small_pca_dim,
-        large_pca_dim=args.large_pca_dim
+        large_pca_dim=args.large_pca_dim,
+        use_finbert=args.use_finbert
     )
 
 
