@@ -1,112 +1,224 @@
 """
-Process news headlines and generate FinBERT embeddings with PCA reduction.
+Process news headlines using sentence-transformers (dual model approach).
 
 This script:
 1. Loads news headlines (CSV format with 'date' and 'headline' columns)
-2. Generates FinBERT embeddings for each day
-3. Reduces embeddings to 28 features using PCA
-4. Saves processed features for integration with technical features
+2. Generates embeddings with two models (small + large)
+3. Reduces with PCA (12 + 14 = 26 features)
+4. Aggregates by date and saves processed features
 """
 import sys
 import os
 from pathlib import Path
 import pandas as pd
 import numpy as np
+from typing import List, Tuple, Optional
+from datetime import datetime
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.features.finbert_embeddings import generate_news_embeddings
-from src.features.pca_reduction import reduce_embeddings
+
+def load_headlines(csv_path: str) -> pd.DataFrame:
+    """
+    Load headlines from CSV and normalize dates.
+    Supports both formats:
+    - 'date' and 'headline' columns
+    - 'published_utc' and 'title' columns
+    """
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"Headlines file not found: {csv_path}")
+    
+    df = pd.read_csv(csv_path)
+    
+    # Handle different column name formats
+    if 'published_utc' in df.columns and 'title' in df.columns:
+        df["date"] = pd.to_datetime(df["published_utc"]).dt.tz_convert(None).dt.normalize()
+        df = df.rename(columns={'title': 'headline'})
+    elif 'date' in df.columns and 'headline' in df.columns:
+        df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+    else:
+        raise ValueError(f"CSV must have either ('date', 'headline') or ('published_utc', 'title') columns")
+    
+    df = df[["date", "headline"]].dropna(subset=["headline"])
+    # Convert headline to string and remove empty headlines
+    df["headline"] = df["headline"].astype(str)
+    df = df[df["headline"].str.strip() != ""]  # Remove empty headlines
+    
+    print(f"Loaded {len(df)} headlines from {df['date'].min().date()} to {df['date'].max().date()}")
+    return df
+
+
+def get_embeddings(model, texts: List[str], batch_size: int = 64) -> np.ndarray:
+    """
+    Generate embeddings for a list of texts using sentence-transformers.
+    """
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        tqdm = lambda x, **kwargs: x  # fallback if tqdm not available
+    
+    all_vecs = []
+    for i in tqdm(range(0, len(texts), batch_size), desc="Embedding"):
+        batch = texts[i:i+batch_size]
+        vecs = model.encode(batch, convert_to_numpy=True, show_progress_bar=False)
+        all_vecs.append(vecs)
+    return np.vstack(all_vecs)
+
+
+def make_daily_pca(
+    model_name: str,
+    n_components: int,
+    headlines_df: pd.DataFrame,
+    random_state: int = 42,
+    agg_method: str = "mean"
+) -> Tuple[pd.DataFrame, object]:
+    """
+    Embed headlines, reduce with PCA, and aggregate by date.
+    
+    Returns:
+        (daily_pca_df, fitted_pca_object)
+    """
+    try:
+        from sentence_transformers import SentenceTransformer
+        from sklearn.decomposition import PCA
+    except ImportError as e:
+        raise ImportError(
+            "sentence-transformers and scikit-learn required for embeddings. "
+            f"Install with: pip install sentence-transformers scikit-learn\n{e}"
+        )
+    
+    print(f"Loading model: {model_name}")
+    model = SentenceTransformer(model_name)
+    
+    texts = headlines_df["headline"].tolist()
+    emb = get_embeddings(model, texts)
+    
+    pca = PCA(n_components=n_components, random_state=random_state)
+    reduced = pca.fit_transform(emb)
+    
+    reduced_df = pd.DataFrame(
+        reduced, 
+        columns=[f"pca_{i+1}" for i in range(n_components)]
+    )
+    reduced_df["date"] = headlines_df["date"].values
+    
+    # Aggregate multiple headlines per day
+    daily = reduced_df.groupby("date").agg(agg_method).reset_index()
+    
+    explained_var = pca.explained_variance_ratio_.sum()
+    print(f"PCA: {n_components} components explain {explained_var:.2%} variance")
+    
+    return daily, pca
+
+
+def align_with_dates(
+    pca_df: pd.DataFrame,
+    target_dates: pd.DatetimeIndex,
+    suffix: str = ""
+) -> pd.DataFrame:
+    """
+    Reindex PCA features to match trading calendar.
+    Missing dates filled with 0.0, and add 'has_news' indicator.
+    """
+    pca_df = pca_df.set_index("date").reindex(target_dates)
+    pca_df.index.name = "date"
+    
+    # Fill missing with 0
+    pca_df = pca_df.fillna(0.0)
+    
+    # Add has_news indicator
+    has_news_col = f"has_news{suffix}"
+    pca_df[has_news_col] = (pca_df.sum(axis=1) != 0).astype(int)
+    
+    # Rename columns with suffix if provided
+    if suffix:
+        rename_map = {col: f"{col}{suffix}" for col in pca_df.columns if col.startswith("pca_")}
+        pca_df = pca_df.rename(columns=rename_map)
+    
+    return pca_df.reset_index()
 
 
 def process_news_data(
     news_path: str,
     output_dir: str = "data/processed",
-    n_components: int = 28,
-    model_name: str = "ProsusAI/finbert"
-):
+    small_model: str = "all-MiniLM-L6-v2",
+    large_model: str = "sentence-transformers/all-mpnet-base-v2",
+    small_pca_dim: int = 12,
+    large_pca_dim: int = 14,
+    random_state: int = 42,
+    agg_method: str = "mean"
+) -> pd.DataFrame:
     """
-    Process news headlines into 28 PCA-reduced FinBERT features.
+    Process news headlines using sentence-transformers dual model approach.
     
     Args:
-        news_path: Path to news CSV file (columns: date, headline)
+        news_path: Path to news CSV file (columns: date, headline or published_utc, title)
         output_dir: Directory to save processed features
-        n_components: Number of PCA components (default: 28)
-        model_name: FinBERT model name
+        small_model: Small sentence-transformers model
+        large_model: Large sentence-transformers model
+        small_pca_dim: PCA dimensions for small model (default: 12)
+        large_pca_dim: PCA dimensions for large model (default: 14)
+        random_state: Random seed
+        agg_method: Aggregation method for daily headlines (mean, max, etc.)
+    
+    Returns:
+        DataFrame with processed features (26 PCA + 2 has_news = 28 total)
     """
     print("=" * 70)
-    print("Processing News Headlines with FinBERT")
+    print("Processing News Headlines with Sentence-Transformers (Dual Model)")
     print("=" * 70)
     
-    # Load news data
-    print(f"\nLoading news data from: {news_path}")
-    news_df = pd.read_csv(news_path)
+    # Load headlines
+    headlines_df = load_headlines(news_path)
     
-    # Check required columns
-    required_cols = ["date", "headline"]
-    missing = [c for c in required_cols if c not in news_df.columns]
-    if missing:
-        raise ValueError(f"Missing required columns: {missing}")
-    
-    print(f"Loaded {len(news_df)} news headlines")
-    print(f"Date range: {news_df['date'].min()} to {news_df['date'].max()}")
-    
-    # Generate FinBERT embeddings
-    print("\n" + "=" * 70)
-    print("Step 1: Generating FinBERT Embeddings")
-    print("=" * 70)
-    
-    embeddings_path = os.path.join(output_dir, "news_embeddings_raw.csv")
-    embeddings_df = generate_news_embeddings(
-        news_df,
-        headline_col="headline",
-        date_col="date",
-        model_name=model_name,
-        save_path=embeddings_path
+    # Get date range from headlines
+    all_dates = pd.date_range(
+        start=headlines_df['date'].min(),
+        end=headlines_df['date'].max(),
+        freq='D'
     )
     
-    print(f"\nGenerated embeddings: {embeddings_df.shape}")
-    print(f"Embedding dimension: {embeddings_df.shape[1]}")
-    
-    # Reduce to 28 features using PCA
-    print("\n" + "=" * 70)
-    print("Step 2: Reducing to 28 Features with PCA")
-    print("=" * 70)
-    
-    pca_path = os.path.join(output_dir, "news_pca_reducer.pkl")
-    reduced_df = reduce_embeddings(
-        embeddings_df,
-        n_components=n_components,
-        train_dates=None,  # Fit on all data (can be changed for time-series splits)
-        save_path=pca_path
+    # Small model
+    print(f"\n--- Small model ({small_model}) ---")
+    small_daily, _ = make_daily_pca(
+        small_model, small_pca_dim, headlines_df, random_state, agg_method
     )
+    small_aligned = align_with_dates(small_daily, all_dates, suffix="")
     
-    # Save reduced features
+    # Large model
+    print(f"\n--- Large model ({large_model}) ---")
+    large_daily, _ = make_daily_pca(
+        large_model, large_pca_dim, headlines_df, random_state, agg_method
+    )
+    large_aligned = align_with_dates(large_daily, all_dates, suffix="_large")
+    
+    # Merge
+    merged = small_aligned.merge(large_aligned, on="date", how="outer")
+    merged = merged.set_index("date").sort_index()
+    
+    # Save
+    os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, "news_features_28d.csv")
-    reduced_df.to_csv(output_path)
-    
-    print(f"\n✓ Reduced to {n_components} features")
-    print(f"✓ Saved to: {output_path}")
-    print(f"\nFeature columns: {list(reduced_df.columns)}")
+    merged.to_csv(output_path)
     
     print("\n" + "=" * 70)
     print("News Processing Complete!")
     print("=" * 70)
-    print(f"\nOutput files:")
-    print(f"  - Raw embeddings: {embeddings_path}")
-    print(f"  - Reduced features (28D): {output_path}")
-    print(f"  - PCA reducer: {pca_path}")
+    print(f"✓ Generated {len(merged.columns)} headline features for {len(merged)} dates")
+    print(f"  Features: {small_pca_dim} small + {large_pca_dim} large + 2 has_news = {len(merged.columns)} total")
+    print(f"✓ Saved to: {output_path}")
+    print("=" * 70)
     
-    return reduced_df
+    return merged
 
 
 def main():
-    """Main processing function."""
+    """Main entry point."""
     import argparse
     
-    parser = argparse.ArgumentParser(description="Process news headlines with FinBERT")
+    parser = argparse.ArgumentParser(description="Process news headlines with sentence-transformers")
     parser.add_argument(
         "--news_path",
         type=str,
@@ -120,29 +232,39 @@ def main():
         help="Output directory for processed features"
     )
     parser.add_argument(
-        "--n_components",
-        type=int,
-        default=28,
-        help="Number of PCA components (default: 28)"
+        "--small_model",
+        type=str,
+        default="all-MiniLM-L6-v2",
+        help="Small sentence-transformers model"
     )
     parser.add_argument(
-        "--model_name",
+        "--large_model",
         type=str,
-        default="ProsusAI/finbert",
-        help="FinBERT model name"
+        default="sentence-transformers/all-mpnet-base-v2",
+        help="Large sentence-transformers model"
+    )
+    parser.add_argument(
+        "--small_pca_dim",
+        type=int,
+        default=12,
+        help="PCA dimensions for small model (default: 12)"
+    )
+    parser.add_argument(
+        "--large_pca_dim",
+        type=int,
+        default=14,
+        help="PCA dimensions for large model (default: 14)"
     )
     
     args = parser.parse_args()
     
-    # Create output directory
-    os.makedirs(args.output_dir, exist_ok=True)
-    
-    # Process news data
     process_news_data(
         news_path=args.news_path,
         output_dir=args.output_dir,
-        n_components=args.n_components,
-        model_name=args.model_name
+        small_model=args.small_model,
+        large_model=args.large_model,
+        small_pca_dim=args.small_pca_dim,
+        large_pca_dim=args.large_pca_dim
     )
 
 

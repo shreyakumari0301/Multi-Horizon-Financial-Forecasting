@@ -99,28 +99,80 @@ def fetch_news_for_symbol(symbol: str, days_back: int = 365, max_retries: int = 
             cutoff_date = datetime.now() - timedelta(days=days_back)
             
             for item in news:
-                # yfinance news format: {'title': '...', 'publisher': '...', 'link': '...', 'providerPublishTime': timestamp}
-                title = item.get('title', '')
-                pub_time = item.get('providerPublishTime', 0)
+                # yfinance news format changed - now has nested 'content' structure
+                # Structure: {'id': '...', 'content': {'title': '...', 'providerPublishTime': ...}}
+                content = item.get('content', {})
+                
+                # Get title from nested content
+                title = (content.get('title') or 
+                        item.get('title') or 
+                        content.get('headline') or 
+                        item.get('headline') or 
+                        content.get('linkTitle') or 
+                        item.get('linkTitle') or 
+                        content.get('summary') or 
+                        item.get('summary') or '')
+                
+                # Skip if no title found
+                if not title or (isinstance(title, str) and len(title.strip()) == 0):
+                    continue
+                
+                # Get publish time from nested content or top level
+                pub_time = (content.get('providerPublishTime') or 
+                           item.get('providerPublishTime') or 
+                           content.get('pubDate') or 
+                           item.get('pubDate') or 0)
                 
                 if pub_time:
-                    news_date = datetime.fromtimestamp(pub_time)
+                    try:
+                        # Handle both Unix timestamp and other formats
+                        if isinstance(pub_time, (int, float)):
+                            news_date = datetime.fromtimestamp(pub_time)
+                        else:
+                            news_date = datetime.fromtimestamp(int(pub_time))
+                    except (ValueError, OSError):
+                        news_date = datetime.now()
                 else:
                     # If no timestamp, use current date
                     news_date = datetime.now()
                 
                 # Only include recent news
                 if news_date >= cutoff_date:
+                    # Get publisher and link from nested content or top level
+                    publisher = content.get('publisher', {})
+                    if isinstance(publisher, dict):
+                        publisher = publisher.get('name', '') or publisher.get('displayName', '')
+                    else:
+                        publisher = publisher or item.get('publisher', '')
+                    
+                    link = content.get('clickThroughUrl', {})
+                    if isinstance(link, dict):
+                        link = link.get('url', '') or link.get('canonicalUrl', '')
+                    else:
+                        link = link or item.get('link', '') or item.get('url', '')
+                    
                     news_list.append({
                         'date': news_date.strftime('%Y-%m-%d'),
-                        'headline': title,
+                        'headline': title.strip(),
                         'symbol': symbol,
-                        'publisher': item.get('publisher', ''),
-                        'link': item.get('link', '')
+                        'publisher': publisher if isinstance(publisher, str) else '',
+                        'link': link if isinstance(link, str) else ''
                     })
             
+            if not news_list:
+                print(f"  ⚠ No valid news items found for {symbol} (all had empty titles or were outside date range)")
+                return pd.DataFrame(columns=['date', 'headline'])
+            
             df = pd.DataFrame(news_list)
-            print(f"  ✓ Fetched {len(df)} news items for {symbol}")
+            
+            # Debug: show sample headlines
+            if len(df) > 0:
+                sample_headline = df['headline'].iloc[0][:60] if len(df['headline'].iloc[0]) > 0 else "[empty]"
+                print(f"  ✓ Fetched {len(df)} news items for {symbol}")
+                print(f"    Sample: {sample_headline}...")
+            else:
+                print(f"  ⚠ No valid news items for {symbol}")
+            
             return df
             
         except Exception as e:
