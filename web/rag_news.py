@@ -38,13 +38,69 @@ class NewsRAG:
                 df = pd.read_csv(self.news_db_path)
                 if 'date' in df.columns and 'headline' in df.columns:
                     self.news_cache = df.to_dict('records')
-                    print(f"✓ Loaded {len(self.news_cache)} news items from {self.news_db_path}")
+                    print(f"✓ Loaded {len(self.news_cache)} real news items from {self.news_db_path}")
                     return
             except Exception as e:
                 print(f"⚠ Could not load news from {self.news_db_path}: {e}")
         
-        # Create recent demo news (last 7 days)
+        # Try to fetch real-time news from yfinance (optional)
+        try:
+            self._try_fetch_realtime_news()
+            if len(self.news_cache) > 0:
+                return
+        except Exception as e:
+            print(f"⚠ Could not fetch real-time news: {e}")
+        
+        # Create recent demo news (last 7 days) as fallback
+        print("⚠ Using demo news (no real news data found)")
         self._create_recent_demo_news()
+    
+    def _try_fetch_realtime_news(self):
+        """Try to fetch real-time news from yfinance for common symbols."""
+        try:
+            import yfinance as yf
+            
+            # Try fetching news for common symbols
+            symbols = ['SPY', '^GSPC', 'AAPL', 'MSFT', 'GOOGL']
+            all_news = []
+            
+            for symbol in symbols:
+                try:
+                    ticker = yf.Ticker(symbol)
+                    news = ticker.news[:10]  # Get top 10 recent news
+                    
+                    for item in news:
+                        title = item.get('title', '')
+                        pub_time = item.get('providerPublishTime', 0)
+                        
+                        if pub_time:
+                            news_date = datetime.fromtimestamp(pub_time)
+                        else:
+                            news_date = datetime.now()
+                        
+                        all_news.append({
+                            'date': news_date.strftime('%Y-%m-%d'),
+                            'headline': title,
+                            'symbol': symbol,
+                            'sentiment': 'neutral'  # Could add sentiment analysis here
+                        })
+                except:
+                    continue
+            
+            if all_news:
+                # Remove duplicates
+                seen = set()
+                unique_news = []
+                for news in all_news:
+                    key = (news['date'], news['headline'])
+                    if key not in seen:
+                        seen.add(key)
+                        unique_news.append(news)
+                
+                self.news_cache = unique_news
+                print(f"✓ Fetched {len(self.news_cache)} real-time news items from yfinance")
+        except ImportError:
+            pass  # yfinance not available
     
     def _create_recent_demo_news(self):
         """Create demo news with recent dates (last 7 days)."""
