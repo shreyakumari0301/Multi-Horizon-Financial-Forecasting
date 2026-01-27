@@ -238,10 +238,20 @@ def process_news_data(
         )
         
         # If we had fewer components, pad with zeros to get 28 features
-        if len(reduced_df.columns) < 28:
-            for i in range(len(reduced_df.columns), 28):
+        # reduced_df should have columns like 'news_pc1', 'news_pc2', etc.
+        existing_pc_cols = [c for c in reduced_df.columns if c.startswith('news_pc')]
+        n_existing = len(existing_pc_cols)
+        
+        if n_existing < 28:
+            # Add zero columns for missing components
+            for i in range(n_existing, 28):
                 reduced_df[f'news_pc{i+1}'] = 0.0
-            print(f"  Padded to 28 features (added {28 - len(reduced_df.columns)} zero columns)")
+            print(f"  Padded to 28 features (added {28 - n_existing} zero columns)")
+        
+        # Ensure columns are in order
+        pc_cols = [f'news_pc{i+1}' for i in range(28)]
+        other_cols = [c for c in reduced_df.columns if not c.startswith('news_pc')]
+        reduced_df = reduced_df[pc_cols + other_cols]
         
         # Save
         os.makedirs(output_dir, exist_ok=True)
