@@ -110,20 +110,34 @@ def make_daily_pca(
     texts = headlines_df["headline"].tolist()
     emb = get_embeddings(model, texts)
     
-    pca = PCA(n_components=n_components, random_state=random_state)
+    # Adjust n_components if we have fewer samples
+    n_samples = emb.shape[0]
+    actual_components = min(n_components, n_samples, emb.shape[1])
+    
+    if actual_components < n_components:
+        print(f"  ⚠ Adjusting PCA: {n_components} → {actual_components} (only {n_samples} samples)")
+    
+    pca = PCA(n_components=actual_components, random_state=random_state)
     reduced = pca.fit_transform(emb)
     
     reduced_df = pd.DataFrame(
         reduced, 
-        columns=[f"pca_{i+1}" for i in range(n_components)]
+        columns=[f"pca_{i+1}" for i in range(actual_components)]
     )
     reduced_df["date"] = headlines_df["date"].values
     
     # Aggregate multiple headlines per day
     daily = reduced_df.groupby("date").agg(agg_method).reset_index()
     
-    explained_var = pca.explained_variance_ratio_.sum()
-    print(f"PCA: {n_components} components explain {explained_var:.2%} variance")
+    # Pad to requested number of components with zeros
+    if actual_components < n_components:
+        for i in range(actual_components, n_components):
+            daily[f"pca_{i+1}"] = 0.0
+    
+    explained_var = pca.explained_variance_ratio_.sum() if actual_components > 0 else 0.0
+    print(f"PCA: {actual_components} components explain {explained_var:.2%} variance")
+    if actual_components < n_components:
+        print(f"  Padded to {n_components} components (added {n_components - actual_components} zero columns)")
     
     return daily, pca
 
@@ -205,11 +219,29 @@ def process_news_data(
         
         # Reduce with PCA
         print("\nReducing to 28 features with PCA...")
+        
+        # Check if we have enough samples for PCA
+        n_samples = len(embeddings_df)
+        n_components = 28
+        
+        if n_samples < n_components:
+            print(f"⚠ Warning: Only {n_samples} samples but {n_components} PCA components requested")
+            print(f"  Reducing to {n_samples} components (or fewer if needed)")
+            n_components = min(n_samples, n_components)
+            if n_components < 1:
+                raise ValueError(f"Not enough data for PCA. Need at least 1 sample, got {n_samples}")
+        
         reduced_df = reduce_embeddings(
             embeddings_df,
-            n_components=28,
+            n_components=n_components,
             train_dates=None
         )
+        
+        # If we had fewer components, pad with zeros to get 28 features
+        if len(reduced_df.columns) < 28:
+            for i in range(len(reduced_df.columns), 28):
+                reduced_df[f'news_pc{i+1}'] = 0.0
+            print(f"  Padded to 28 features (added {28 - len(reduced_df.columns)} zero columns)")
         
         # Save
         os.makedirs(output_dir, exist_ok=True)

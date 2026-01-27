@@ -237,6 +237,9 @@ def fetch_all_news(
             "BTC-USD",               # Bitcoin (if available)
         ]
     
+    # Note: yfinance typically only returns recent news (last few days/weeks)
+    # For historical news, you may need to use a different source or API
+    
     print("=" * 70)
     print("Fetching Real News Headlines from yfinance")
     print("=" * 70)
