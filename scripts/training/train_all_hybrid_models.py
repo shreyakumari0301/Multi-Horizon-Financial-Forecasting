@@ -307,14 +307,15 @@ def train_hybrid_ensemble(
     # Load data
     X_train, y_train, X_test, y_test, test_index = load_fold_data(fold_dir, horizon)
     
-    # Grid maps
-    grid_map = {
+    # Use same models as main.py (all registered models with a grid)
+    grid_map = getattr(experiments, "MODEL_GRIDS", {
         "ridge": experiments.RIDGE_GRID,
         "esn": experiments.ESN_GRID,
         "lstm": experiments.LSTM_GRID,
         "transformer": experiments.TRANSFORMER_GRID,
         "tcn": experiments.TCN_GRID,
-    }
+    })
+    model_names = list(grid_map.keys())
     
     # Train all base models
     base_models = []
@@ -322,7 +323,7 @@ def train_hybrid_ensemble(
     
     print(f"\n  Training base models for fold {fold}, {horizon}...")
     
-    for model_name in ["ridge", "esn", "lstm", "transformer", "tcn"]:
+    for model_name in model_names:
         grid = grid_map.get(model_name)
         if grid is None:
             continue
@@ -392,8 +393,7 @@ def train_hybrid_ensemble(
                 uses_delta=uses_delta
             )
             print(f"  Optimized weights: {optimal_weights}")
-            print(f"    Ridge: {optimal_weights[0]:.3f}, ESN: {optimal_weights[1]:.3f}, "
-                  f"LSTM: {optimal_weights[2]:.3f}, Transformer: {optimal_weights[3]:.3f}, TCN: {optimal_weights[4]:.3f}")
+            print(f"    " + ", ".join(f"{model_names[i]}: {optimal_weights[i]:.3f}" for i in range(len(model_names))))
         except Exception as e:
             print(f"  Warning: Weight optimization failed ({e}), using performance-based weights")
             optimal_weights = compute_performance_based_weights(
@@ -405,8 +405,7 @@ def train_hybrid_ensemble(
             base_models, X_val_opt, y_val_opt, uses_delta
         )
         print(f"  Performance-based weights: {optimal_weights}")
-        print(f"    Ridge: {optimal_weights[0]:.3f}, ESN: {optimal_weights[1]:.3f}, "
-              f"LSTM: {optimal_weights[2]:.3f}, Transformer: {optimal_weights[3]:.3f}, TCN: {optimal_weights[4]:.3f}")
+        print(f"    " + ", ".join(f"{model_names[i]}: {optimal_weights[i]:.3f}" for i in range(len(model_names))))
     
     # Create hybrid ensemble with optimized weights
     hybrid = HybridEnsemble(base_models, weights=optimal_weights)
@@ -462,16 +461,11 @@ def train_hybrid_ensemble(
         with open(results_path, "w") as f:
             json.dump(results, f, indent=2)
         
-        # Save predictions
-        pred_df = pd.DataFrame({
-            "y_true": y_test,
-            "y_pred_hybrid": y_test_pred_hybrid,
-            "y_pred_ridge": base_models[0].predict(X_test),
-            "y_pred_esn": base_models[1].predict(X_test),
-            "y_pred_lstm": base_models[2].predict(X_test),
-            "y_pred_transformer": base_models[3].predict(X_test),
-            "y_pred_tcn": base_models[4].predict(X_test),
-        }, index=test_index)
+        # Save predictions (all base models + hybrid)
+        pred_dict = {"y_true": y_test, "y_pred_hybrid": y_test_pred_hybrid}
+        for i, name in enumerate(model_names):
+            pred_dict[f"y_pred_{name}"] = base_models[i].predict(X_test)
+        pred_df = pd.DataFrame(pred_dict, index=test_index)
         pred_path = os.path.join(exp_dir, f"{horizon}_predictions.csv")
         pred_df.to_csv(pred_path)
         results["predictions_path"] = pred_path

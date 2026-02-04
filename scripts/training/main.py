@@ -221,7 +221,6 @@ def main():
         if not rows:
             return
         cols = ["model", "fold", "horizon", "RMSE", "MAE", "R2", "DirAcc", "AvgPnL", "Vol", "Sharpe", "Turnover"]
-        # compute widths
         widths = {c: len(c) for c in cols}
         for r in rows:
             for c in cols:
@@ -239,6 +238,37 @@ def main():
         for r in rows:
             print("   ".join([str(r.get(c, "")).ljust(widths[c]) for c in cols]))
         print(line("=") + "\n")
+
+    def _print_overfitting_table(rows, horizon: str):
+        if not rows:
+            return
+        cols = ["model", "fold", "horizon", "Train_RMSE", "Test_RMSE", "Train_R2", "Test_R2", "Train_DirAcc", "Test_DirAcc", "Overfit"]
+        widths = {c: len(c) for c in cols}
+        for r in rows:
+            for c in cols:
+                widths[c] = max(widths[c], len(str(r.get(c, ""))))
+
+        def line(sep="-"):
+            return sep * (sum(widths.values()) + 3 * (len(cols) - 1))
+
+        print(line("="))
+        print(f"Table: Train vs Test (overfitting check, fold 0, {horizon}). Overfit=Y if test RMSE>1.15*train RMSE or train DirAcc - test DirAcc > 0.08")
+        print(line("="))
+        header = "   ".join([c.ljust(widths[c]) for c in cols])
+        print(header)
+        print(line("-"))
+        for r in rows:
+            print("   ".join([str(r.get(c, "")).ljust(widths[c]) for c in cols]))
+        print(line("=") + "\n")
+
+    def _print_interpretation():
+        print("How to read these metrics (how each model is making a prediction):")
+        print("  DirAcc (directional accuracy): Fraction of days the model predicted the correct sign of the return (up/down). Higher = better at direction.")
+        print("  RMSE/MAE: Average prediction error magnitude. Lower = smaller errors.")
+        print("  R2: Variance explained; negative = worse than predicting the mean.")
+        print("  Sharpe/Turnover: From a toy strategy that goes long when pred>0, short when pred<0 (1 bp cost). Sharpe = risk-adjusted return; Turnover = trading frequency.")
+        print("  Overfit: Y = train performance notably better than test (model may be memorizing). N = train and test more in line.")
+        print("")
 
     # Run experiments for each model
     for model_name in MODELS:
@@ -264,15 +294,21 @@ def main():
             create_model_fn=create_model,  # Pass the create_model function
         )
 
-        # Capture fold-0 rows for each horizon for terminal comparison
+        # Capture fold-0 rows for each horizon for terminal comparison (test + train for overfitting)
         try:
             for hz in HORIZONS:
                 sub = results_df[(results_df["fold"] == 0) & (results_df["horizon"] == hz)]
                 if len(sub) == 0:
                     continue
-                # take first row for this model/horizon
                 row = sub.iloc[0]
                 tm = row.get("test_metrics", {}) or {}
+                trm = row.get("train_metrics", {}) or {}
+                train_rmse = float(trm.get("rmse") or 0)
+                test_rmse = float(tm.get("rmse") or 0)
+                train_da = float(trm.get("dir_acc") or 0)
+                test_da = float(tm.get("dir_acc") or 0)
+                # Overfit?: test RMSE notably worse than train, or train DirAcc notably higher than test
+                overfit = (train_rmse > 1e-9 and test_rmse > train_rmse * 1.15) or (train_da - test_da > 0.08)
                 comparison_rows.append({
                     "model": model_name,
                     "fold": str(int(row.get("fold", 0))),
@@ -285,21 +321,33 @@ def main():
                     "Vol": _fmt_float(tm.get("vol"), 6),
                     "Sharpe": _fmt_float(tm.get("sharpe"), 3),
                     "Turnover": _fmt_float(tm.get("turnover"), 3),
+                    "Train_RMSE": _fmt_float(trm.get("rmse"), 6),
+                    "Test_RMSE": _fmt_float(tm.get("rmse"), 6),
+                    "Train_R2": _fmt_float(trm.get("r2"), 3),
+                    "Test_R2": _fmt_float(tm.get("r2"), 3),
+                    "Train_DirAcc": _fmt_float(trm.get("dir_acc"), 3),
+                    "Test_DirAcc": _fmt_float(tm.get("dir_acc"), 3),
+                    "Overfit": "Y" if overfit else "N",
                 })
         except Exception:
             pass
         
         print(f"\n{model_name.upper()} completed. Results shape: {results_df.shape}")
 
-    # Print comparison tables per horizon (fold 0)
+    # Print comparison tables per horizon (fold 0) — same order as MODELS for consistency
     try:
+        model_order = {m: i for i, m in enumerate(MODELS)}
         for hz in HORIZONS:
             hz_key = hz.replace("target_", "")
             rows = [r for r in comparison_rows if r.get("horizon") == hz_key]
-            _print_comparison_table(rows, horizon=f"h={hz_key.replace('h', '') if hz_key.startswith('h') else hz_key}")
+            rows.sort(key=lambda r: model_order.get(r.get("model", ""), 999))
+            h_label = f"h={hz_key.replace('h', '') if hz_key.startswith('h') else hz_key}"
+            _print_comparison_table(rows, horizon=h_label)
+            _print_overfitting_table(rows, horizon=h_label)
+        _print_interpretation()
     except Exception:
         pass
-    
+
     print("\n" + "=" * 60)
     print("Training Pipeline Complete!")
     print("=" * 60)

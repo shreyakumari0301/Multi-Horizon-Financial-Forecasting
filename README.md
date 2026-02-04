@@ -155,15 +155,25 @@ The framework has been evaluated across 9 chronological folds and 3 prediction h
 
 ### Preliminary Test Metrics (Fold 0, H1)
 
-Single-fold, single-horizon metrics from the training pipeline (Sharpe from toy sign backtest with 1 bp cost):
+**Preliminary test metrics (fold 0, h=1).** Sharpe from toy sign backtest (1 bp cost):
 
-| model       | fold | horizon | RMSE     | MAE      | R2     | DirAcc | AvgPnL   | Vol      | Sharpe | Turnover |
-|-------------|------|---------|----------|----------|--------|--------|----------|----------|--------|----------|
-| ridge       | 0    | h1      | 0.007638 | 0.005865 | -0.459 | 0.484  | 0.000316 | 0.006344 | 0.792  | 0.312    |
-| esn         | 0    | h1      | 0.006332 | 0.004451 | -0.003 | 0.544  | 0.000619 | 0.006324 | 1.554  | 0.002    |
-| lstm        | 0    | h1      | 0.006907 | 0.005047 | 0.452  | 0.750  | 0.004652 | 0.008053 | 9.171  | 0.431    |
-| transformer | 0    | h1      | 0.010414 | 0.007906 | -1.712 | 0.448  | -0.000305| 0.006354 | -0.762 | 0.327    |
-| tcn         | 0    | h1      | 0.006841 | 0.004958 | 0.462  | 0.778  | 0.004702 | 0.008022 | 9.304  | 0.454    |
+| model | fold | horizon | RMSE | MAE | R2 | DirAcc | AvgPnL | Vol | Sharpe | Turnover |
+|-------|------|---------|------|-----|-----|--------|--------|-----|--------|----------|
+| ridge | 0 | h1 | 0.007638 | 0.005865 | -0.459 | 0.484 | 0.000316 | 0.006344 | 0.792 | 0.312 |
+| esn | 0 | h1 | 0.006332 | 0.004451 | -0.003 | 0.544 | 0.000619 | 0.006324 | 1.554 | 0.002 |
+| lstm | 0 | h1 | 0.006907 | 0.005047 | 0.452 | 0.750 | 0.004652 | 0.008053 | 9.171 | 0.431 |
+| transformer | 0 | h1 | 0.010414 | 0.007906 | -1.712 | 0.448 | -0.000305 | 0.006354 | -0.762 | 0.327 |
+| tcn | 0 | h1 | 0.006841 | 0.004958 | 0.462 | 0.778 | 0.004702 | 0.008022 | 9.304 | 0.454 |
+| lstm_gru_xgboost | 0 | h1 | 0.008141 | 0.006248 | 0.238 | 0.694 | 0.003859 | 0.008466 | 7.237 | 0.379 |
+| mstf_ca | 0 | h1 | 0.007229 | 0.005250 | 0.399 | 0.710 | 0.004105 | 0.008351 | 7.804 | 0.399 |
+
+### Which model is used for final prediction?
+
+- **Training (`scripts/training/main.py`):** All **7** registered models are trained for comparison and evaluation: **ridge**, **esn**, **lstm**, **transformer**, **tcn**, **lstm_gru_xgboost**, **mstf_ca**. Results and metrics are written to `data/experiments/` and summarized in the table above.
+- **Final / production prediction:** The production predictor uses the **hybrid ensemble**, not a single model. The ensemble is a weighted combination of all **7** base models (same as above). Weights are optimized on a validation split for directional accuracy (or RMSE).  
+  - The hybrid is built by running `scripts/training/train_all_hybrid_models.py` and is saved under `data/models/hybrid/fold_{fold}/{horizon}.pkl`.
+  - `scripts/production/production_predictor.py` loads this hybrid and uses it for real-time predictions (38 features: 10 technical + 28 news).
+- So: **we train 7 models** for evaluation; **we use the 7-model hybrid ensemble** for final/production prediction. The table above shows each model’s metrics; the deployed predictor is the weighted ensemble of all seven.
 
 ### Key Findings
 
