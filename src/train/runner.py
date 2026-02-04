@@ -140,6 +140,7 @@ def run_experiment(
     splits_dir: str = "data/splits",
     results_dir: str = "data/experiments",
     save_predictions: bool = True,
+    include_news: bool = True,
 ) -> Dict[str, Any]:
     """
     Run a single experiment: train model and evaluate on test set.
@@ -151,6 +152,7 @@ def run_experiment(
         splits_dir: Directory containing fold data
         results_dir: Directory to save results
         save_predictions: Whether to save predictions to CSV
+        include_news: If True, use technical + news features; if False, technical only
     
     Returns:
         Dictionary containing experiment results
@@ -158,7 +160,7 @@ def run_experiment(
     fold_dir = os.path.join(splits_dir, f"fold_{fold}")
     
     # Load data
-    X_train, y_train, X_test, y_test, test_index = load_fold_data(fold_dir, horizon)
+    X_train, y_train, X_test, y_test, test_index = load_fold_data(fold_dir, horizon, include_news=include_news)
     
     # Train model
     model.fit(X_train, y_train)
@@ -234,6 +236,7 @@ def run_grid_search(
     results_dir: str = "data/experiments",
     grid_index: int = 0,
     create_model_fn=None,
+    include_news: bool = True,
     **override_kwargs
 ) -> pd.DataFrame:
     """
@@ -278,6 +281,7 @@ def run_grid_search(
                 horizon=horizon,
                 splits_dir=splits_dir,
                 results_dir=results_dir,
+                include_news=include_news,
             )
             
             all_results.append(results)

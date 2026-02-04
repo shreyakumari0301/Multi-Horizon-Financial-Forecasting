@@ -230,7 +230,7 @@ def main():
             return sep * (sum(widths.values()) + 3 * (len(cols) - 1))
 
         print("\n" + line("="))
-        print(f"Table: Preliminary test metrics (fold 0, {horizon}). Sharpe from toy sign backtest (1 bp cost)")
+        print(f"Table: Preliminary test metrics (fold 0, {horizon}). Sharpe = toy sign backtest (1 bp cost), capped at 1.0 for display")
         print(line("="))
         header = "   ".join([c.ljust(widths[c]) for c in cols])
         print(header)
@@ -252,7 +252,7 @@ def main():
             return sep * (sum(widths.values()) + 3 * (len(cols) - 1))
 
         print(line("="))
-        print(f"Table: Train vs Test (overfitting check, fold 0, {horizon}). Overfit=Y if test RMSE>1.15*train RMSE or train DirAcc - test DirAcc > 0.08")
+        print(f"Table: Train vs Test (overfitting check, fold 0, {horizon}). Overfit=Y if: test RMSE>1.15*train RMSE, or train DirAcc - test DirAcc > 0.08, or train R2 - test R2 > 0.25, or test Sharpe > 2")
         print(line("="))
         header = "   ".join([c.ljust(widths[c]) for c in cols])
         print(header)
@@ -266,8 +266,8 @@ def main():
         print("  DirAcc (directional accuracy): Fraction of days the model predicted the correct sign of the return (up/down). Higher = better at direction.")
         print("  RMSE/MAE: Average prediction error magnitude. Lower = smaller errors.")
         print("  R2: Variance explained; negative = worse than predicting the mean.")
-        print("  Sharpe/Turnover: From a toy strategy that goes long when pred>0, short when pred<0 (1 bp cost). Sharpe = risk-adjusted return; Turnover = trading frequency.")
-        print("  Overfit: Y = train performance notably better than test (model may be memorizing). N = train and test more in line.")
+        print("  Sharpe/Turnover: From a toy strategy that goes long when pred>0, short when pred<0 (1 bp cost). Sharpe is capped at 1.0 in the table (raw can be higher; raw > 1–2 on small test often indicates overfitting).")
+        print("  Overfit: Y = train>>test (RMSE/DirAcc/R2 gap) or test Sharpe>2 (curve-fitting). N = more in line.")
         print("")
 
     # Run experiments for each model
@@ -307,8 +307,18 @@ def main():
                 test_rmse = float(tm.get("rmse") or 0)
                 train_da = float(trm.get("dir_acc") or 0)
                 test_da = float(tm.get("dir_acc") or 0)
-                # Overfit?: test RMSE notably worse than train, or train DirAcc notably higher than test
-                overfit = (train_rmse > 1e-9 and test_rmse > train_rmse * 1.15) or (train_da - test_da > 0.08)
+                train_r2 = float(trm.get("r2") or 0)
+                test_r2 = float(tm.get("r2") or 0)
+                test_sharpe = float(tm.get("sharpe") or 0)
+                # Overfit?: train vs test gap (RMSE, DirAcc, R2) OR unrealistically high test Sharpe (curve-fitting to test)
+                overfit = (
+                    (train_rmse > 1e-9 and test_rmse > train_rmse * 1.15)
+                    or (train_da - test_da > 0.08)
+                    or (train_r2 - test_r2 > 0.25)
+                    or (test_sharpe > 2.0)
+                )
+                # Display Sharpe in [0, 1]: cap at 1.0 so table is comparable; raw > 1 on small test often = overfitting
+                sharpe_display = min(test_sharpe, 1.0)
                 comparison_rows.append({
                     "model": model_name,
                     "fold": str(int(row.get("fold", 0))),
@@ -319,7 +329,7 @@ def main():
                     "DirAcc": _fmt_float(tm.get("dir_acc"), 3),
                     "AvgPnL": _fmt_float(tm.get("avg_pnl"), 6),
                     "Vol": _fmt_float(tm.get("vol"), 6),
-                    "Sharpe": _fmt_float(tm.get("sharpe"), 3),
+                    "Sharpe": _fmt_float(sharpe_display, 3),
                     "Turnover": _fmt_float(tm.get("turnover"), 3),
                     "Train_RMSE": _fmt_float(trm.get("rmse"), 6),
                     "Test_RMSE": _fmt_float(tm.get("rmse"), 6),
