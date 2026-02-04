@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Any, Optional
 from pathlib import Path
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 
 def load_fold_data(fold_dir: str, target_col: str, include_news: bool = True):
@@ -54,6 +54,42 @@ def load_fold_data(fold_dir: str, target_col: str, include_news: bool = True):
     return X_train, y_train, X_test, y_test, test_index
 
 
+def _toy_sign_backtest_metrics(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    cost_per_trade: float = 0.0001,
+    annualization: int = 252,
+) -> Dict[str, float]:
+    """
+    Toy sign backtest (1 bp cost by default).
+
+    - position[t] = sign(y_pred[t]) in {-1, 0, +1}
+    - pnl[t] = position[t] * y_true[t] - cost_per_trade * turnover[t]
+    - turnover[t] = |position[t] - position[t-1]| / 2
+
+    Returns AvgPnL, Vol, Sharpe, Turnover.
+    """
+    y_true = np.asarray(y_true).reshape(-1)
+    y_pred = np.asarray(y_pred).reshape(-1)
+    n = min(len(y_true), len(y_pred))
+    if n <= 1:
+        return {"avg_pnl": 0.0, "vol": 0.0, "sharpe": 0.0, "turnover": 0.0}
+
+    y_true = y_true[:n]
+    y_pred = y_pred[:n]
+
+    position = np.sign(y_pred).astype(np.float64)
+    dpos = np.diff(position, prepend=0.0)
+    turnover = np.abs(dpos) / 2.0
+    pnl = position * y_true - cost_per_trade * turnover
+
+    avg_pnl = float(np.mean(pnl))
+    vol = float(np.std(pnl, ddof=0))
+    sharpe = float((avg_pnl / vol) * np.sqrt(annualization)) if vol > 0 else 0.0
+    turn = float(np.mean(turnover))
+    return {"avg_pnl": avg_pnl, "vol": vol, "sharpe": sharpe, "turnover": turn}
+
+
 def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
     """
     Compute regression metrics.
@@ -65,8 +101,15 @@ def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
     Returns:
         Dictionary of metrics
     """
-    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-    mae = mean_absolute_error(y_true, y_pred)
+    y_true = np.asarray(y_true).reshape(-1)
+    y_pred = np.asarray(y_pred).reshape(-1)
+    n = min(len(y_true), len(y_pred))
+    y_true = y_true[:n]
+    y_pred = y_pred[:n]
+
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred)) if n > 0 else 0.0
+    mae = mean_absolute_error(y_true, y_pred) if n > 0 else 0.0
+    r2 = r2_score(y_true, y_pred) if n > 1 else 0.0
     
     # Directional accuracy
     if len(y_true) > 1:
@@ -75,11 +118,18 @@ def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
         dir_acc = np.mean(true_dir == pred_dir)
     else:
         dir_acc = 0.0
+
+    bt = _toy_sign_backtest_metrics(y_true, y_pred, cost_per_trade=0.0001, annualization=252)
     
     return {
         "rmse": float(rmse),
         "mae": float(mae),
+        "r2": float(r2),
         "dir_acc": float(dir_acc),
+        "avg_pnl": float(bt["avg_pnl"]),
+        "vol": float(bt["vol"]),
+        "sharpe": float(bt["sharpe"]),
+        "turnover": float(bt["turnover"]),
     }
 
 

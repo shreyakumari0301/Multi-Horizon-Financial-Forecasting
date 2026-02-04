@@ -9,7 +9,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 import config.experiments as experiments
-from src.models.registry import get_model
+from src.models import list_models, get_model
 from src.train.runner import run_experiment, run_grid_search
 
 
@@ -171,8 +171,10 @@ def main():
     
     args = parser.parse_args()
     
-    # Configuration from experiments.py
-    MODELS = ["ridge", "esn", "lstm", "transformer", "tcn"]  # or select specific models
+    # Configuration: all registered models that have a grid in experiments.py
+    MODELS = [m for m in list_models() if m in getattr(experiments, "MODEL_GRIDS", {})]
+    if not MODELS:
+        MODELS = list(getattr(experiments, "MODEL_GRIDS", {}).keys())
     FOLDS = experiments.FOLDS
     HORIZONS = experiments.HORIZONS
     
@@ -206,23 +208,46 @@ def main():
     
     print("=" * 60)
     
+    # Collect fold-0 comparison rows for terminal table
+    comparison_rows = []
+
+    def _fmt_float(x, digits=6):
+        try:
+            return f"{float(x):.{digits}f}"
+        except Exception:
+            return str(x)
+
+    def _print_comparison_table(rows, horizon: str):
+        if not rows:
+            return
+        cols = ["model", "fold", "horizon", "RMSE", "MAE", "R2", "DirAcc", "AvgPnL", "Vol", "Sharpe", "Turnover"]
+        # compute widths
+        widths = {c: len(c) for c in cols}
+        for r in rows:
+            for c in cols:
+                widths[c] = max(widths[c], len(str(r.get(c, ""))))
+
+        def line(sep="-"):
+            return sep * (sum(widths.values()) + 3 * (len(cols) - 1))
+
+        print("\n" + line("="))
+        print(f"Table: Preliminary test metrics (fold 0, {horizon}). Sharpe from toy sign backtest (1 bp cost)")
+        print(line("="))
+        header = "   ".join([c.ljust(widths[c]) for c in cols])
+        print(header)
+        print(line("-"))
+        for r in rows:
+            print("   ".join([str(r.get(c, "")).ljust(widths[c]) for c in cols]))
+        print(line("=") + "\n")
+
     # Run experiments for each model
     for model_name in MODELS:
         print(f"\n{'='*60}")
         print(f"Training {model_name.upper()}")
         print(f"{'='*60}")
         
-        # Get grid from experiments
-        grid_map = {
-            "ridge": experiments.RIDGE_GRID,
-            "esn": experiments.ESN_GRID,
-            "lstm": experiments.LSTM_GRID,
-            "transformer": experiments.TRANSFORMER_GRID,
-            "tcn": experiments.TCN_GRID,
-            "mstf_ca": experiments.MSTF_CA_GRID,
-        }
-        
-        grid = grid_map.get(model_name)
+        # Get grid from experiments (MODEL_GRIDS maps every registered model with a grid)
+        grid = experiments.MODEL_GRIDS.get(model_name)
         if grid is None:
             print(f"Warning: No grid found for {model_name}, skipping...")
             continue
@@ -238,8 +263,42 @@ def main():
             grid_index=0,  # Use first combination from grid
             create_model_fn=create_model,  # Pass the create_model function
         )
+
+        # Capture fold-0 rows for each horizon for terminal comparison
+        try:
+            for hz in HORIZONS:
+                sub = results_df[(results_df["fold"] == 0) & (results_df["horizon"] == hz)]
+                if len(sub) == 0:
+                    continue
+                # take first row for this model/horizon
+                row = sub.iloc[0]
+                tm = row.get("test_metrics", {}) or {}
+                comparison_rows.append({
+                    "model": model_name,
+                    "fold": str(int(row.get("fold", 0))),
+                    "horizon": hz.replace("target_", ""),
+                    "RMSE": _fmt_float(tm.get("rmse"), 6),
+                    "MAE": _fmt_float(tm.get("mae"), 6),
+                    "R2": _fmt_float(tm.get("r2"), 3),
+                    "DirAcc": _fmt_float(tm.get("dir_acc"), 3),
+                    "AvgPnL": _fmt_float(tm.get("avg_pnl"), 6),
+                    "Vol": _fmt_float(tm.get("vol"), 6),
+                    "Sharpe": _fmt_float(tm.get("sharpe"), 3),
+                    "Turnover": _fmt_float(tm.get("turnover"), 3),
+                })
+        except Exception:
+            pass
         
         print(f"\n{model_name.upper()} completed. Results shape: {results_df.shape}")
+
+    # Print comparison tables per horizon (fold 0)
+    try:
+        for hz in HORIZONS:
+            hz_key = hz.replace("target_", "")
+            rows = [r for r in comparison_rows if r.get("horizon") == hz_key]
+            _print_comparison_table(rows, horizon=f"h={hz_key.replace('h', '') if hz_key.startswith('h') else hz_key}")
+    except Exception:
+        pass
     
     print("\n" + "=" * 60)
     print("Training Pipeline Complete!")

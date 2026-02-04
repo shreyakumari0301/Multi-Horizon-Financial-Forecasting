@@ -153,6 +153,18 @@ The framework has been evaluated across 9 chronological folds and 3 prediction h
 | H5 | 0.028 ± 0.012 | 0.024 ± 0.008 | 0.071 ± 0.060 |
 | H20 | 0.063 ± 0.033 | 0.050 ± 0.020 | 0.163 ± 0.110 |
 
+### Preliminary Test Metrics (Fold 0, H1)
+
+Single-fold, single-horizon metrics from the training pipeline (Sharpe from toy sign backtest with 1 bp cost):
+
+| model       | fold | horizon | RMSE     | MAE      | R2     | DirAcc | AvgPnL   | Vol      | Sharpe | Turnover |
+|-------------|------|---------|----------|----------|--------|--------|----------|----------|--------|----------|
+| ridge       | 0    | h1      | 0.007638 | 0.005865 | -0.459 | 0.484  | 0.000316 | 0.006344 | 0.792  | 0.312    |
+| esn         | 0    | h1      | 0.006332 | 0.004451 | -0.003 | 0.544  | 0.000619 | 0.006324 | 1.554  | 0.002    |
+| lstm        | 0    | h1      | 0.006907 | 0.005047 | 0.452  | 0.750  | 0.004652 | 0.008053 | 9.171  | 0.431    |
+| transformer | 0    | h1      | 0.010414 | 0.007906 | -1.712 | 0.448  | -0.000305| 0.006354 | -0.762 | 0.327    |
+| tcn         | 0    | h1      | 0.006841 | 0.004958 | 0.462  | 0.778  | 0.004702 | 0.008022 | 9.304  | 0.454    |
+
 ### Key Findings
 
 - **Transformer** achieves lowest RMSE across all horizons (best prediction accuracy)

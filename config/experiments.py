@@ -128,6 +128,17 @@ HORIZON_SPECIFIC_CONFIG = {
     },
 }
 
+# Map each registered model name to its hyperparameter grid (used by training pipeline)
+MODEL_GRIDS = {
+    "ridge": RIDGE_GRID,
+    "esn": ESN_GRID,
+    "lstm": LSTM_GRID,
+    "transformer": TRANSFORMER_GRID,
+    "tcn": TCN_GRID,
+    "lstm_gru_xgboost": LSTM_GRU_XGBOOST_GRID,
+    "mstf_ca": MSTF_CA_GRID,
+}
+
 # Which folds/horizons to train for default M4 run:
 FOLDS     = [0]             # expand to [0,1,2,...] later
 HORIZONS  = ["target_h1"]   # add "target_h5","target_h20" later

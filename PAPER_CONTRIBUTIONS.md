@@ -136,7 +136,17 @@ We present a comprehensive research framework for multivariate financial time se
 4. **Methodology** — Left-padding, chronological splits, direction loss; model descriptions (short); **MSTF-CA** in detail (architecture, cross-attention, fusion weights).  
 5. **News and Multimodal Features** — Fetching, FinBERT vs sentence-transformers, PCA, alignment, integration.  
 6. **Experimental Setup** — Data, folds, horizons, metrics, baselines, hardware.  
-7. **Results** — Tables (RMSE, MAE, DirAcc by horizon and model); ablation (e.g. with/without news, with/without direction loss); inference speed.  
+7. **Results** — Tables (RMSE, MAE, DirAcc by horizon and model); ablation (e.g. with/without news, with/without direction loss); inference speed.
+
+**Preliminary test metrics (fold 0, h=1).** Sharpe from toy sign backtest (1 bp cost):
+
+| model       | fold | horizon | RMSE     | MAE      | R2     | DirAcc | AvgPnL   | Vol      | Sharpe | Turnover |
+|-------------|------|---------|----------|----------|--------|--------|----------|----------|--------|----------|
+| ridge       | 0    | h1      | 0.007638 | 0.005865 | -0.459 | 0.484  | 0.000316 | 0.006344 | 0.792  | 0.312    |
+| esn         | 0    | h1      | 0.006332 | 0.004451 | -0.003 | 0.544  | 0.000619 | 0.006324 | 1.554  | 0.002    |
+| lstm        | 0    | h1      | 0.006907 | 0.005047 | 0.452  | 0.750  | 0.004652 | 0.008053 | 9.171  | 0.431    |
+| transformer | 0    | h1      | 0.010414 | 0.007906 | -1.712 | 0.448  | -0.000305| 0.006354 | -0.762 | 0.327    |
+| tcn         | 0    | h1      | 0.006841 | 0.004958 | 0.462  | 0.778  | 0.004702 | 0.008022 | 9.304  | 0.454    |  
 8. **Discussion** — Limitations, when MSTF-CA helps, value of news.  
 9. **Conclusion** — Summary of implemented works and problems solved; code availability.  
 10. **References** — PyTorch, scikit-learn, FinBERT, sentence-transformers, prior time series and finance papers.
